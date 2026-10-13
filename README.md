@@ -1,4 +1,4 @@
-# Studio 2 — Klasifikasi Sampah · Kelompok <NOMOR/NAMA KELOMPOK>
+# Studio 2 — Klasifikasi Sampah · Kelompok <11 - Yolo>
 
 Deep Learning (IF25-40401) · Teknik Informatika ITERA · Semester Ganjil 2026/2027
 
@@ -8,7 +8,7 @@ Deep Learning (IF25-40401) · Teknik Informatika ITERA · Semester Ganjil 2026/2
 |----|--------------|-----|------------------|
 | 1  | Muhammad Romadhon Santoso | 123140031 | *(coming soon)* |
 | 2  | Sigit Kurnia Hartawan | 123140033 | *(coming soon)* |
-| 3  |  | 123140 | *(coming soon)* |
+
 
 ## Ringkasan Pendekatan
 

@@ -1,0 +1,7 @@
+﻿# Paket tambahan untuk submission (opsional).
+# Paket dasar yang selalu tersedia di environment asisten: torch, torchvision, timm, pillow, numpy.
+# Versi tidak dipatok agar cocok dengan environment penilai.
+torch
+torchvision
+numpy
+pillow

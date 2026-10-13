@@ -1,0 +1,22 @@
+﻿# Dataset — JANGAN di-commit (repo publik; aturan kompetisi melarang unggah ulang dataset)
+train/
+my_train/
+my_val/
+**/train_sources.csv
+
+# Bobot & catatan proses latih (model.pth submission tetap di-commit)
+*.pth
+!submission/model.pth
+runs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
