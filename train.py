@@ -26,6 +26,9 @@ Argumen penting:
     --split: daftar validasi beku (default splits/val.txt).
     --model: berkas berisi get_model()/get_transform() (default submission/model.py).
     --out: tujuan bobot terbaik (default submission/model.pth).
+    --aug: jenis augmentasi latih, 'standard' atau 'strong' (default standard).
+    --wd: weight decay AdamW (alias --weight-decay).
+    --history-out: tujuan berkas riwayat JSON (default runs/history.json).
     --limit: batasi jumlah gambar latih untuk uji cepat; 0 = semua (default 0).
     --scratch: latih tanpa bobot ImageNet.
 
@@ -76,6 +79,44 @@ def load_model_module(path):
         if not hasattr(mod, fn):
             raise SystemExit(f"[GAGAL] {p} tidak mendefinisikan {fn}()")
     return mod
+
+
+def bikin_aug(sisi, jenis):
+    """Bangun transformasi latih sesuai jenis augmentasi yang dipilih.
+
+    Args:
+        sisi: ukuran sisi crop keluaran.
+        jenis: 'standard' (RRC 0.7-1.0 + hflip + ColorJitter) atau 'strong'
+            (RRC 0.5-1.0 + hflip + vflip + RandAugment + RandomErasing).
+
+    Returns:
+        tuple: (transform, keterangan_singkat) untuk dicetak ke layar.
+
+    Raises:
+        SystemExit: bila jenis augmentasi tidak dikenal.
+    """
+    normalisasi = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    if jenis == "standard":
+        tf = transforms.Compose([
+            transforms.RandomResizedCrop(sisi, scale=(0.7, 1.0)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(0.2, 0.2, 0.2, 0.05),
+            transforms.ToTensor(),
+            normalisasi,
+        ])
+        return tf, f"standard: RRC({sisi}, 0.7-1.0) + hflip + ColorJitter"
+    if jenis == "strong":
+        tf = transforms.Compose([
+            transforms.RandomResizedCrop(sisi, scale=(0.5, 1.0)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomVerticalFlip(),
+            transforms.RandAugment(num_ops=2, magnitude=9),
+            transforms.ToTensor(),
+            normalisasi,
+            transforms.RandomErasing(p=0.25, scale=(0.02, 0.2), value="random"),
+        ])
+        return tf, f"strong: RRC({sisi}, 0.5-1.0) + hflip + vflip + RandAugment(2, 9) + RandomErasing(0.25)"
+    raise SystemExit(f"[GAGAL] --aug harus 'standard' atau 'strong', bukan {jenis!r}")
 
 
 class SplitList(Dataset):
@@ -229,8 +270,13 @@ def main():
     ap.add_argument("--out", default="submission/model.pth", help="tujuan bobot terbaik")
     ap.add_argument("--epochs", type=int, default=12)
     ap.add_argument("--lr", type=float, default=3e-4)
-    ap.add_argument("--wd", type=float, default=1e-4)
+    ap.add_argument("--wd", "--weight-decay", type=float, default=1e-4, dest="wd",
+                    help="weight decay AdamW")
     ap.add_argument("--bs", type=int, default=32)
+    ap.add_argument("--aug", default="standard", choices=["standard", "strong"],
+                    help="jenis augmentasi latih (lihat bikin_aug)")
+    ap.add_argument("--history-out", default="runs/history.json",
+                    help="tujuan berkas riwayat JSON")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--patience", type=int, default=4, help="berhenti bila macro-F1 val tak naik N epoch")
@@ -256,19 +302,14 @@ def main():
     print(f"device={device} | train={len(tr_names)} val={len(val_names)} | split={a.split}")
 
     sisi = crop or 224
-    train_tf = transforms.Compose([
-        transforms.RandomResizedCrop(sisi, scale=(0.7, 1.0)),
-        transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(0.2, 0.2, 0.2, 0.05),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-    ])
+    train_tf, keterangan_aug = bikin_aug(sisi, a.aug)
     tr_dl = DataLoader(SplitList(a.data, tr_names, train_tf), batch_size=a.bs, shuffle=True,
                        num_workers=a.workers, drop_last=len(tr_names) > a.bs,
                        persistent_workers=a.workers > 0)
     va_dl = DataLoader(SplitList(a.data, val_names, get_transform()), batch_size=a.bs,
                        num_workers=a.workers)
-    print(f"train: {len(tr_dl)} batch/epoch | aug: RRC({sisi}, 0.7-1.0)+hflip+ColorJitter")
+    print(f"train: {len(tr_dl)} batch/epoch | aug: {keterangan_aug}")
+    print(f"optim: AdamW lr={a.lr} wd={a.wd} | riwayat: {a.history_out}")
 
     model = get_model().to(device)
     if not a.scratch:
@@ -289,14 +330,16 @@ def main():
         m, _, _ = evaluate_on(model, va_dl, device)
         durasi = time.time() - t0
         rekor = m["macro_f1"] > best_f1
-        tanda = " bintang rekor" if rekor else ""
+        tanda = "   <-- REKOR" if rekor else ""
         riwayat.append({"epoch": ep, "train_loss": round(train_loss, 4), "val_loss": round(val_loss, 4),
                         "val_macro_f1": round(m["macro_f1"], 4), "val_acc": round(m["accuracy"], 4),
                         "lr": lr_kini, "detik": round(durasi, 1), "rekor": rekor})
-        print(f"ep {ep:2d}/{a.epochs} | train_loss={train_loss:.4f} val_loss={val_loss:.4f} "
-              f"| val_macro_f1={m['macro_f1']:.4f} val_acc={m['accuracy']:.4f} "
-              f"| lr={lr_kini:.2e} | {durasi:.0f}s{tanda}", flush=True)
-        Path("runs/history.json").write_text(json.dumps(riwayat, indent=2), encoding="utf-8")
+        print(f"ep {ep:2d}/{a.epochs} | train_loss {train_loss:.4f} | val_loss {val_loss:.4f} | "
+              f"macro_f1 {m['macro_f1']:.4f} | acc {m['accuracy']:.4f} | "
+              f"lr {lr_kini:.2e} | {durasi:.0f}s{tanda}", flush=True)
+        hj = Path(a.history_out)
+        hj.parent.mkdir(parents=True, exist_ok=True)
+        hj.write_text(json.dumps(riwayat, indent=2), encoding="utf-8")
         if rekor:
             best_f1, bad = m["macro_f1"], 0
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
