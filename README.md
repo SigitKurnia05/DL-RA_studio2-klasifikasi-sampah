@@ -15,18 +15,18 @@ Repositori: https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah
 
 ## Ringkasan Pendekatan
 
-| Butir | Isi |
+| Nama | Penjelasan |
 |---|---|
 | **Arsitektur / backbone** | **ConvNeXt-Tiny** pretrained ImageNet-1K (`torchvision.models.convnext_tiny`) |
 | **Strategi pelatihan** | Full fine-tuning (seluruh layer dilatih); AdamW + CosineAnnealingLR; maksimal 20 epoch; early stopping; bobot terbaik dipilih berdasarkan **macro-F1 validasi** |
 | **Augmentasi** | RandomResizedCrop(0,5–1,0), flip vertikal, RandAugment(2, 9), RandomErasing p=0,25, normalisasi ImageNet |
 | **Penanganan kelas tidak seimbang** | Belum diterapkan; `CrossEntropyLoss` dengan `label_smoothing=0,1`. Rencana perbaikan: class-weighted loss atau oversampling kelas minoritas |
 | **Label noise** | `label_smoothing=0,1` |
-| **Data tambahan** | **Tidak ada** — hanya train set dari starter kit; dataset tidak diunggah ulang |
+| **Data tambahan** | **Tidak ada** hanya train set dari starter kit; dataset tidak diunggah ulang |
 | **Ukuran input & preprocessing** | `Resize(256)` → `CenterCrop(224)` → `ToTensor` → normalisasi ImageNet (`mean [0.485, 0.456, 0.406]`, `std [0.229, 0.224, 0.225]`) |
-| **Paket** | `torch`, `torchvision`, `pillow`, `numpy` — tanpa `timm` |
+| **Paket** | `torch`, `torchvision`, `pillow`, `numpy` tanpa `timm` |
 | **Ukuran `submission/model.pth`** | **53,1 MB** dalam fp16 (fp32 berukuran 106,2 MB dan ditolak GitHub). Batas ketentuan 500 MB |
-| **Waktu evaluasi** | 413 gambar = **24,7 detik** pada CPU 2 inti, setara ±45 detik untuk ±740 gambar tersembunyi — jauh di bawah batas 15 menit |
+| **Waktu evaluasi** | 413 gambar = **24,7 detik** pada CPU 2 inti, setara ±45 detik untuk ±740 gambar tersembunyi jauh di bawah batas 15 menit |
 
 ## Hasil
 
@@ -219,7 +219,6 @@ hasilnya dapat diperiksa ulang.
 
 - Halaman resmi Studio 2: https://informatika-itera.github.io/deep-learning-IF25-40401/studio-2/
 - Starter kit resmi: `evaluate.py`, `submission/model.py`, `train_baseline.py`, `README_TEMPLATE.md`
-- Materi Pertemuan 4–5 (CNN from scratch dan variasi arsitektur) serta Pertemuan 6 (fine-tuning
-  backbone ImageNet)
+- Materi Pertemuan 4 (CNN from scratch) serta Pertemuan 5 (CNN dan Variasinya)
 - Dataset: train set resmi mata kuliah (citra dari internet untuk keperluan pendidikan
   non-komersial; sumber per gambar tercatat pada `train_sources.csv` dan tidak di-commit)
