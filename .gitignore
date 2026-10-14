@@ -1,19 +1,27 @@
-﻿# Dataset — JANGAN di-commit (repo publik; aturan kompetisi melarang unggah ulang dataset)
+# Dataset — JANGAN di-commit (repo publik; aturan kompetisi melarang unggah ulang dataset)
+data/
 train/
 my_train/
 my_val/
 **/train_sources.csv
 
-# Bobot & catatan proses latih (model.pth submission tetap di-commit)
+# ── Bobot: hanya submission/model.pth yang di-commit
 *.pth
 !submission/model.pth
-runs/
+
+# ── Artefak pelatihan
+# Riwayat dan kurva tiap percobaan IKUT di-commit sebagai bukti eksperimen.
+# Yang tidak di-commit: bobot di dalam runs/, salinan arsitektur, dan berkas sementara.
+runs/last.json
+runs/**/model.py
+runs/**/__pycache__/
 
 # Python
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+.ipynb_checkpoints/
 
 # Editor / OS
 .vscode/

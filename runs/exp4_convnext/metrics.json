@@ -1,0 +1,83 @@
+{
+  "tag": "exp4_convnext",
+  "arsitektur": "ConvNeXt-Tiny (torchvision, pretrained ImageNet-1K)",
+  "berkas_arsitektur": "experiments/convnext_tiny.py",
+  "input": {
+    "crop": 224,
+    "resize": 256
+  },
+  "config": {
+    "epochs": 20,
+    "batch_size": 16,
+    "lr": 0.0001,
+    "weight_decay": 0.01,
+    "aug": "strong",
+    "patience": 4,
+    "seed": 42
+  },
+  "split_validasi": "splits/val.txt (413 gambar, seed 42, hash 36bee95ec932553b...)",
+  "hasil": {
+    "macro_f1": 0.9658,
+    "akurasi": 0.968523,
+    "jumlah_gambar": 413,
+    "salah": 13,
+    "epoch_terbaik": 5,
+    "epoch_tercatat": 9
+  },
+  "per_class_f1": {
+    "botol_plastik": 0.993548,
+    "gelas_plastik": 0.956522,
+    "kertas_kardus": 0.933333,
+    "saset_kemasan": 0.985366,
+    "styrofoam": 0.96
+  },
+  "confusion_matrix": [
+    [
+      77,
+      1,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      77,
+      0,
+      0,
+      1
+    ],
+    [
+      0,
+      3,
+      49,
+      1,
+      2
+    ],
+    [
+      0,
+      0,
+      0,
+      101,
+      0
+    ],
+    [
+      0,
+      2,
+      1,
+      2,
+      96
+    ]
+  ],
+  "urutan_kelas": [
+    "botol_plastik",
+    "gelas_plastik",
+    "kertas_kardus",
+    "saset_kemasan",
+    "styrofoam"
+  ],
+  "catatan": [
+    "Bobot terbaik jatuh di epoch 5 dari 20 (early stopping aktif di epoch 9).",
+    "Berkas bobot disimpan dalam fp16 (53,1 MB) karena fp32 berukuran 106,2 MB dan GitHub menolak berkas di atas 100 MB. Skor pada split ini tidak berubah: macro-F1 0,9658 pada fp32 maupun fp16, 413 gambar, 0 prediksi berbeda.",
+    "Riwayat per epoch ada di runs/exp4_convnext/history.json."
+  ]
+}

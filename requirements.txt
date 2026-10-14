@@ -1,0 +1,7 @@
+# Dependensi pelatihan dan evaluasi (dijalankan dari root repo).
+# Paket dasar yang selalu tersedia di environment asisten: torch, torchvision, timm, pillow, numpy.
+torch
+torchvision
+numpy
+pillow
+matplotlib
