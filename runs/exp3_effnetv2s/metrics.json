@@ -1,0 +1,31 @@
+{
+  "tag": "exp3_effnetv2s",
+  "arsitektur": "EfficientNetV2-S (torchvision, pretrained ImageNet-1K)",
+  "berkas_arsitektur": "runs/exp3_effnetv2s/model.py (salinan submission/model.py saat itu)",
+  "input": {
+    "crop": 288,
+    "resize": 320
+  },
+  "config": {
+    "epochs": 11,
+    "batch_size": null,
+    "lr": 0.00015,
+    "weight_decay": 0.01,
+    "aug": "strong",
+    "seed": 42
+  },
+  "split_validasi": "splits/val.txt (413 gambar, seed 42, hash 36bee95ec932553b...)",
+  "hasil": {
+    "macro_f1": 0.9595,
+    "akurasi": 0.9613,
+    "jumlah_gambar": 413,
+    "salah": 16,
+    "epoch_terbaik": 7,
+    "epoch_tercatat": 11
+  },
+  "catatan": [
+    "batch_size tidak terekam: train.py belum menuliskan argv ke riwayat pada run ini. Catatan eksperimen menyebut konfigurasi exp2 dan exp3 sama persis, sehingga nilainya mengikuti eksperimen 2 (32); angka ini tidak diklaim sebagai terverifikasi.",
+    "Dijalankan di laptop (GPU 4 GB), rata-rata 511 detik per epoch - sekitar 4x lebih lambat daripada exp4 pada crop 224.",
+    "F1 per kelas tidak terekam untuk run ini."
+  ]
+}
