@@ -2,7 +2,7 @@
 
 Deep Learning (IF25-40401) · Teknik Informatika ITERA · Semester Ganjil 2026/2027
 
-**Nama kelompok:** 11 (YOLO)
+**Nama kelompok:** 11 (YOLO) - You Only Look Once
 
 Repositori: https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah
 
@@ -18,13 +18,13 @@ Repositori: https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah
 | Nama | Penjelasan |
 |---|---|
 | **Arsitektur / backbone** | **ConvNeXt-Tiny** pretrained ImageNet-1K (`torchvision.models.convnext_tiny`) |
-| **Strategi pelatihan** | Full fine-tuning (seluruh layer dilatih); AdamW + CosineAnnealingLR; maksimal 20 epoch; early stopping; bobot terbaik dipilih berdasarkan **macro-F1 validasi** |
-| **Augmentasi** | RandomResizedCrop(0,5–1,0), flip vertikal, RandAugment(2, 9), RandomErasing p=0,25, normalisasi ImageNet |
-| **Penanganan kelas tidak seimbang** | Belum diterapkan; `CrossEntropyLoss` dengan `label_smoothing=0,1`. Rencana perbaikan: class-weighted loss atau oversampling kelas minoritas |
+| **Strategi pelatihan** | Fine-tuning dua tahap: 3 epoch pemanasan kepala (backbone dibekukan, lr 1e-3), lalu 10 epoch seluruh layer (AdamW lr 1e-4, wd 0,05); `CosineAnnealingLR(T_max=10)` dijalankan sampai habis tanpa berhenti dini; bobot terbaik dipilih berdasarkan **macro-F1 validasi** |
+| **Augmentasi** | RandomResizedCrop(0,6–1,0), RandomHorizontalFlip, ColorJitter(0,2; 0,2; 0,2), normalisasi ImageNet. Flip vertikal, RandAugment, dan RandomErasing tidak dipakai |
+| **Penanganan kelas tidak seimbang** | **Diterapkan**: `CrossEntropyLoss(weight=w)` dengan `w_c = (N_total / (5 · N_c)) ** WEIGHT_POWER` dihitung dari frekuensi data latih saja, ditambah `label_smoothing=0,1` |
 | **Label noise** | `label_smoothing=0,1` |
-| **Data tambahan** | **Tidak ada** hanya train set dari starter kit; dataset tidak diunggah ulang |
-| **Ukuran input & preprocessing** | `Resize(256)` → `CenterCrop(224)` → `ToTensor` → normalisasi ImageNet (`mean [0.485, 0.456, 0.406]`, `std [0.229, 0.224, 0.225]`) |
-| **Paket** | `torch`, `torchvision`, `pillow`, `numpy` tanpa `timm` |
+| **Data tambahan** | **Tidak ada** — hanya train set dari starter kit; dataset tidak diunggah ulang |
+| **Ukuran input & preprocessing** | `Resize(236)` → `CenterCrop(224)` → `ToTensor` → normalisasi ImageNet (`mean [0.485, 0.456, 0.406]`, `std [0.229, 0.224, 0.225]`). Angka 236 adalah resep resmi torchvision untuk bobot ConvNeXt-Tiny (`crop_size=224, resize_size=236`) dan dipakai di kedua sisi, latih maupun uji |
+| **Paket** | `torch`, `torchvision`, `pillow`, `numpy` — tanpa `timm` |
 | **Ukuran `submission/model.pth`** | **53,1 MB** dalam fp16 (fp32 berukuran 106,2 MB dan ditolak GitHub). Batas ketentuan 500 MB |
 | **Waktu evaluasi** | 413 gambar = **24,7 detik** pada CPU 2 inti, setara ±45 detik untuk ±740 gambar tersembunyi jauh di bawah batas 15 menit |
 
@@ -37,8 +37,15 @@ dipegang tim pengajar.
 | Putaran | Commit | Backbone | Macro-F1 lokal | Akurasi lokal | Macro-F1 asisten |
 |---|---|---|---|---|---|
 | Preview 1 (14 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny | 0,9658 | 0,9685 | *(menunggu pengumuman)* |
-| Preview 2 (21 Okt) | *(belum)* | — | — | — | — |
+| Preview 2 (21 Okt) | *(belum)* | ConvNeXt-Tiny (resep dua tahap + bobot kelas) | *(belum diukur)* | *(belum diukur)* | *(belum)* |
 | Final (25 Okt) | *(belum)* | — | — | — | — |
+
+Angka resmi putaran Preview 1 yang diumumkan asisten adalah **macro-F1 0,9501** dan akurasi 0,9514.
+Angka itu lebih rendah 0,0157 daripada angka lokal 0,9658 pada split beku sendiri, dan selisih itu
+wajar: split lokal hanya 413 gambar yang juga dipakai memilih epoch, sedangkan validation set
+tersembunyi ±740 gambar yang belum pernah dilihat model. Karena itu seluruh keputusan pemilihan
+model tetap memakai split beku lokal sebagai pembanding antar-percobaan, bukan sebagai perkiraan
+skor asisten.
 
 Hash commit yang dinilai dapat diperiksa dengan:
 
@@ -139,15 +146,27 @@ pip install -r requirements.txt
 # 1. Periksa split beku (tidak menulis apa pun)
 python make_split.py --check --data "<...>/train"
 
-# 2. Latih ulang konfigurasi submission (ConvNeXt-Tiny crop 224)
-python train.py --data "<...>/train" --model experiments/convnext_tiny.py \
-                --epochs 20 --bs 16 --lr 1e-4 --wd 1e-2 --aug strong --patience 5 \
-                --out runs/exp4_convnext/model.pth \
-                --history-out runs/exp4_convnext/history.json
+# 2. Latih ulang konfigurasi submission (resep dua tahap + bobot kelas, crop 224)
+python train.py --data "<...>/train" --model experiments/convnext_ck224.py \
+                --epochs 10 --bs 16 --lr 1e-4 --wd 5e-2 --aug balanced --patience 0 \
+                --out runs/putaran2_ck224/model.pth \
+                --history-out runs/putaran2_ck224/history.json
+
+# 2b. Bila skor langkah 2 sudah menembus catatan lama, uji kenaikan resolusi
+python train.py --data "<...>/train" --model experiments/convnext_ck320.py \
+                --epochs 10 --bs 8 --lr 1e-4 --wd 5e-2 --aug balanced --patience 0 \
+                --out runs/putaran2_ck320/model.pth \
+                --history-out runs/putaran2_ck320/history.json
 
 # 3. Wajib: uji dengan skrip evaluasi resmi milik asisten
 python evaluate.py --submission ./submission --data ./my_val
 ```
+
+`--patience 0` mematikan berhenti dini sehingga `CosineAnnealingLR(T_max=epochs)` melandai sampai
+habis. Resep dua tahap (pemanasan kepala) dan pembobotan kelas tidak diaktifkan lewat argumen CLI,
+melainkan dibaca `train.py` dari berkas arsitektur (`HEAD_EPOCHS`, `HEAD_LR`, `CLASS_WEIGHTED`,
+`WEIGHT_POWER`); penjelasannya ada di `experiments/README.md`. Berkas arsitektur lama tetap bekerja
+seperti sebelumnya karena seluruh nilai tersebut punya bawaan.
 
 `train.py` juga menyalin gambar validasi ke `my_val/` secara otomatis pada akhir pelatihan, sehingga
 langkah 3 dapat dijalankan langsung.

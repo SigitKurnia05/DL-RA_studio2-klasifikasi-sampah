@@ -11,8 +11,15 @@ Keputusan penting:
   - Arsitektur dan transform validasi diambil dari berkas yang ditunjuk --model
     (default submission/model.py) supaya berkas submission tetap satu sumber
     kebenaran; model.py dan model.pth-nya tidak bisa berbeda diam-diam.
-  - Augmentasi dan optimasi dibuat standar dan stabil dulu. Mixup dan EMA sengaja
-    belum dipakai (dijadwalkan untuk putaran berikutnya).
+  - Resep pelatihan ikut dibaca dari berkas model: HEAD_EPOCHS, HEAD_LR,
+    CLASS_WEIGHTED, dan WEIGHT_POWER. Bawaannya (tanpa atribut tersebut) adalah
+    perilaku lama: tanpa pemanasan kepala dan tanpa pembobotan kelas.
+  - Bobot kelas dihitung dari frekuensi data LATIH saja (w_c = (N_total / (K*N_c))
+    ** WEIGHT_POWER, lalu dinormalkan rata-ratanya ke 1), supaya kelas kecil tidak
+    tertindas dan macro-F1 punya ruang naik.
+  - `--patience` yang lebih kecil dari `--epochs` akan memotong CosineAnnealingLR
+    saat lr masih tinggi; karena itu bila nilainya <= 0 atau >= epochs, berhenti dini
+    dimatikan dan annealing dibiarkan melandai sampai habis.
   - Bobot bobot kandidat disimpan ke --out hanya kalau macro-F1-nya membaik; salinan
     kerja disimpan di runs/best.pth supaya proses panjang tidak hilang kalau putus.
 
@@ -24,9 +31,11 @@ Pemakaian:
 Argumen penting:
     --data: folder dataset berisi <kelas>/*.jpg.
     --split: daftar validasi beku (default splits/val.txt).
-    --model: berkas berisi get_model()/get_transform() (default submission/model.py).
+    --model: berkas berisi get_model()/get_transform() dan resep pelatihan opsional
+        (HEAD_EPOCHS, HEAD_LR, CLASS_WEIGHTED, WEIGHT_POWER).
     --out: tujuan bobot terbaik (default submission/model.pth).
-    --aug: jenis augmentasi latih, 'standard' atau 'strong' (default standard).
+    --aug: jenis augmentasi latih, 'standard', 'balanced', atau 'strong' (default standard).
+    --head-epochs: epoch pemanasan kepala; None = ikut HEAD_EPOCHS berkas model.
     --wd: weight decay AdamW (alias --weight-decay).
     --history-out: tujuan berkas riwayat JSON (default runs/history.json).
     --limit: batasi jumlah gambar latih untuk uji cepat; 0 = semua (default 0).
@@ -86,8 +95,9 @@ def bikin_aug(sisi, jenis):
 
     Args:
         sisi: ukuran sisi crop keluaran.
-        jenis: 'standard' (RRC 0.7-1.0 + hflip + ColorJitter) atau 'strong'
-            (RRC 0.5-1.0 + hflip + vflip + RandAugment + RandomErasing).
+        jenis: 'standard' (RRC 0.7-1.0 + hflip + ColorJitter), 'balanced'
+            (RRC 0.6-1.0 + hflip + ColorJitter), atau 'strong' (RRC 0.5-1.0 + hflip +
+            vflip + RandAugment + RandomErasing).
 
     Returns:
         tuple: (transform, keterangan_singkat) untuk dicetak ke layar.
@@ -105,6 +115,15 @@ def bikin_aug(sisi, jenis):
             normalisasi,
         ])
         return tf, f"standard: RRC({sisi}, 0.7-1.0) + hflip + ColorJitter"
+    if jenis == "balanced":
+        tf = transforms.Compose([
+            transforms.RandomResizedCrop(sisi, scale=(0.6, 1.0)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ColorJitter(0.2, 0.2, 0.2),
+            transforms.ToTensor(),
+            normalisasi,
+        ])
+        return tf, f"balanced: RRC({sisi}, 0.6-1.0) + hflip + ColorJitter"
     if jenis == "strong":
         tf = transforms.Compose([
             transforms.RandomResizedCrop(sisi, scale=(0.5, 1.0)),
@@ -170,6 +189,27 @@ def load_pretrained(model, mod):
     if sisa:
         raise SystemExit(f"[GAGAL] layer tidak terisi bobot: {sisa[:3]}")
     print(f"pretrained: {weights} | {len(cocok)} tensor dimuat | {len(dilewati)} tensor kepala dilewati")
+
+
+def bobot_kelas(names, power):
+    """Hitung bobot kelas dari frekuensi data latih, tanpa label validasi.
+
+    Rumus: w_c = (N_total / (K * N_c)) ** power, dengan N_c jumlah gambar kelas c
+    pada data latih saja. Peluruhan `power` dipakai untuk meredam pembobotan bila
+    rasio kelas tidak terlalu timpang; `power` 1.0 berarti pembobotan penuh.
+
+    Args:
+        names: daftar path relatif 'kelas/nama.jpg' data latih.
+        power: pangkat peluruhan pembobotan (0.0 = tanpa pembobotan).
+
+    Returns:
+        torch.Tensor: bobot [K] berurutan menurut CLASSES, dinormalkan agar rata-ratanya 1.
+    """
+    jumlah = torch.zeros(len(CLASSES))
+    for rel in names:
+        jumlah[CLASSES.index(rel.split("/")[0])] += 1
+    w = (jumlah.sum() / (len(CLASSES) * jumlah.clamp(min=1))) ** power
+    return w / w.mean()
 
 
 def train_epoch(model, dl, opt, lossf, device):
@@ -273,21 +313,50 @@ def main():
     ap.add_argument("--wd", "--weight-decay", type=float, default=1e-4, dest="wd",
                     help="weight decay AdamW")
     ap.add_argument("--bs", type=int, default=32)
-    ap.add_argument("--aug", default="standard", choices=["standard", "strong"],
+    ap.add_argument("--aug", default="standard", choices=["standard", "balanced", "strong"],
                     help="jenis augmentasi latih (lihat bikin_aug)")
     ap.add_argument("--history-out", default="runs/history.json",
                     help="tujuan berkas riwayat JSON")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--patience", type=int, default=4, help="berhenti bila macro-F1 val tak naik N epoch")
+    ap.add_argument("--head-epochs", default=None,
+                    help="epoch pemanasan kepala (backbone beku) sebelum fine-tuning penuh; "
+                         "tidak diisi atau 'None' = pakai HEAD_EPOCHS dari berkas model, "
+                         "0 = pemanasan dimatikan")
     ap.add_argument("--limit", type=int, default=0, help="batasi gambar latih (uji cepat); 0 = semua")
     ap.add_argument("--scratch", action="store_true", help="latih tanpa bobot ImageNet")
     a = ap.parse_args()
+    # Nilai diterima sebagai string supaya 'None' (yang dikirim notebook secara apa adanya)
+    # berarti "ikuti berkas model", bukan langsung gagal diparse sebagai angka.
+    if isinstance(a.head_epochs, str):
+        teks = a.head_epochs.strip().lower()
+        if teks in ("", "none"):
+            a.head_epochs = None
+        else:
+            try:
+                a.head_epochs = int(teks)
+            except ValueError:
+                raise SystemExit(f"[GAGAL] --head-epochs harus angka, 'none', atau dikosongkan; "
+                                 f"diterima {a.head_epochs!r}")
 
     mod = load_model_module(a.model)
     get_model, get_transform = mod.get_model, mod.get_transform
     crop = getattr(mod, "CROP", None)
     print(f"model file: {Path(a.model).resolve()}" + (f" | crop={crop}" if crop else ""))
+
+    # Resep pelatihan milik berkas model. Nilai cadangannya sengaja menghasilkan
+    # perilaku lama (tanpa pemanasan kepala) supaya berkas arsitektur lama tetap jalan.
+    head_epochs = getattr(mod, "HEAD_EPOCHS", 0) if a.head_epochs is None else a.head_epochs
+    head_lr = getattr(mod, "HEAD_LR", 1e-3)
+    pakai_bobot_kelas = getattr(mod, "CLASS_WEIGHTED", False)
+    power_bobot = getattr(mod, "WEIGHT_POWER", 1.0)
+    if a.patience <= 0 or a.patience >= a.epochs:
+        # Tidak akan pernah tercapai: cosine annealing dibiarkan melandai sampai habis.
+        a.patience = a.epochs + 1
+    else:
+        print(f"catatan: patience {a.patience} < epochs {a.epochs} -> cosine bisa terpotong "
+              f"saat lr masih tinggi (akurasi kemungkinan turun)")
 
     torch.manual_seed(a.seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -315,28 +384,33 @@ def main():
     if not a.scratch:
         load_pretrained(model, mod)
 
-    opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=a.wd)
-    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, a.epochs)
-    lossf = nn.CrossEntropyLoss(label_smoothing=0.1)
+    # Bobot kelas dihitung dari frekuensi data LATIH saja (bukan validasi), dengan
+    # rumus w_c = (N_total / (K * N_c)) ** power lalu dinormalkan rata-ratanya ke 1.
+    if pakai_bobot_kelas and power_bobot > 0:
+        bobot = bobot_kelas(tr_names, power_bobot)
+        print("bobot kelas (latih): " + " ".join(
+            f"{c}={w:.3f}" for c, w in zip(CLASSES, bobot.tolist())))
+        lossf = nn.CrossEntropyLoss(weight=bobot.to(device), label_smoothing=0.1)
+    else:
+        lossf = nn.CrossEntropyLoss(label_smoothing=0.1)
 
     Path("runs").mkdir(exist_ok=True)
     best_f1, best_state, bad, riwayat = -1.0, None, 0, []
-    for ep in range(1, a.epochs + 1):
-        t0 = time.time()
-        train_loss = train_epoch(model, tr_dl, opt, lossf, device)
-        lr_kini = opt.param_groups[0]["lr"]
-        sched.step()  # jadwal melangkah setelah epoch selesai
-        val_loss = hitung_loss(model, va_dl, lossf, device)
-        m, _, _ = evaluate_on(model, va_dl, device)
-        durasi = time.time() - t0
+    ep_global = 0
+
+    def catat(ep, train_loss, val_loss, m, lr_kini, durasi):
+        """Simpan satu baris riwayat dan kembalikan True bila macro-F1 memecahkan rekor."""
+        nonlocal best_f1, best_state, bad
         rekor = m["macro_f1"] > best_f1
-        tanda = "   <-- REKOR" if rekor else ""
-        riwayat.append({"epoch": ep, "train_loss": round(train_loss, 4), "val_loss": round(val_loss, 4),
-                        "val_macro_f1": round(m["macro_f1"], 4), "val_acc": round(m["accuracy"], 4),
-                        "lr": lr_kini, "detik": round(durasi, 1), "rekor": rekor})
-        print(f"ep {ep:2d}/{a.epochs} | train_loss {train_loss:.4f} | val_loss {val_loss:.4f} | "
+        riwayat.append({"epoch": ep, "train_loss": round(train_loss, 4),
+                        "val_loss": round(val_loss, 4),
+                        "val_macro_f1": round(m["macro_f1"], 4),
+                        "val_acc": round(m["accuracy"], 4), "lr": lr_kini,
+                        "detik": round(durasi, 1), "rekor": rekor})
+        print(f"ep {ep:2d} | train_loss {train_loss:.4f} | val_loss {val_loss:.4f} | "
               f"macro_f1 {m['macro_f1']:.4f} | acc {m['accuracy']:.4f} | "
-              f"lr {lr_kini:.2e} | {durasi:.0f}s{tanda}", flush=True)
+              f"lr {lr_kini:.2e} | {durasi:.0f}s" + ("   <-- REKOR" if rekor else ""),
+              flush=True)
         hj = Path(a.history_out)
         hj.parent.mkdir(parents=True, exist_ok=True)
         hj.write_text(json.dumps(riwayat, indent=2), encoding="utf-8")
@@ -346,9 +420,47 @@ def main():
             torch.save(best_state, "runs/best.pth")  # simpan tiap perbaikan: proses panjang gampang putus
         else:
             bad += 1
-            if bad >= a.patience:
-                print(f"early stop: macro-F1 val tidak naik {a.patience} epoch")
-                break
+        return rekor
+
+    # ── Tahap 1: pemanasan kepala, backbone dibekukan ─────────────────────────
+    if head_epochs > 0:
+        print(f"\n-- tahap 1: kepala saja, {head_epochs} epoch, lr {head_lr:g} --")
+        for p in model.features.parameters():
+            p.requires_grad = False
+        kepala = [p for p in model.classifier.parameters() if p.requires_grad]
+        opt_head = torch.optim.AdamW(kepala, lr=head_lr, weight_decay=a.wd)
+        for _ in range(head_epochs):
+            ep_global += 1
+            t0 = time.time()
+            train_loss = train_epoch(model, tr_dl, opt_head, lossf, device)
+            val_loss = hitung_loss(model, va_dl, lossf, device)
+            m, _, _ = evaluate_on(model, va_dl, device)
+            catat(ep_global, train_loss, val_loss, m, opt_head.param_groups[0]["lr"],
+                  time.time() - t0)
+
+    # ── Tahap 2: seluruh layer, cosine annealing sampai habis ─────────────────
+    if head_epochs > 0:
+        print(f"\n-- tahap 2: seluruh layer, {a.epochs} epoch, lr {a.lr:g} --")
+    for p in model.parameters():
+        p.requires_grad = True
+    opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=a.wd)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, a.epochs)
+    print(f"optim: AdamW lr={a.lr} wd={a.wd} | cosine T_max={a.epochs} | "
+          f"{'berhenti dini: MATI (annealing dilandai sampai habis)' if a.patience >= a.epochs else f'berhenti dini: {a.patience} epoch'}"
+          f" | riwayat: {a.history_out}")
+
+    for _ in range(a.epochs):
+        ep_global += 1
+        t0 = time.time()
+        train_loss = train_epoch(model, tr_dl, opt, lossf, device)
+        lr_kini = opt.param_groups[0]["lr"]
+        sched.step()  # jadwal melangkah setelah epoch selesai
+        val_loss = hitung_loss(model, va_dl, lossf, device)
+        m, _, _ = evaluate_on(model, va_dl, device)
+        catat(ep_global, train_loss, val_loss, m, lr_kini, time.time() - t0)
+        if bad >= a.patience:
+            print(f"early stop: macro-F1 val tidak naik {a.patience} epoch")
+            break
 
     model.load_state_dict(best_state)
     m, _, _ = evaluate_on(model, va_dl, device)

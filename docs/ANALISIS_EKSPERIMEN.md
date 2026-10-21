@@ -134,3 +134,85 @@ Langkah berikutnya untuk putaran Preview 2, diurutkan dari yang paling murah:
   berkas submission hanya berubah pada saat promosi.
 - Riwayat dan kurva tiap percobaan di `runs/<tag>/` ikut di-commit sebagai bukti, sedangkan bobot di
   dalamnya tidak (lihat `.gitignore`).
+
+## 5. Audit Putaran Preview 2 (21 Oktober 2026)
+
+Putaran Preview 1 menghasilkan macro-F1 **0,9501** dan akurasi **0,9514** pada validation set asisten
+(±740 gambar), sementara angka lokal pada split beku 413 gambar adalah 0,9658. Selisih 0,0157 itu
+menjadi dasar audit berikut: bagian mana dari konfigurasi yang tidak ikut berpindah ke himpunan
+penilaian asisten.
+
+### 5.1 Pembanding eksternal
+
+Tim dengan peringkat 1 pada putaran tersebut memakai backbone yang sama, ConvNeXt-Tiny
+(`torchvision`). Bobot submission mereka diukur ulang pada split beku kelompok sendiri memakai
+`evaluate.py` resmi, sehingga perbandingannya setara. Bobot tersebut **tidak** dipakai sebagai
+submission; yang diambil hanya informasi resep yang memang publik di repositori mereka.
+
+| Skenario | Bobot | Transform | Macro-F1 | Akurasi | Salah |
+|---|---|---|---|---:|---:|
+| A | kelompok sendiri | resize 256, crop 224 | 0,9658 | 0,9685 | 13 |
+| B | peringkat 1 | resize 236, crop 224 | **0,9754** | 0,9782 | 9 |
+| C | peringkat 1 | resize 256, crop 224 | 0,9699 | 0,9734 | 11 |
+| D | kelompok sendiri + TTA flip horizontal | resize 256, crop 224 | 0,9660 | 0,9685 | 13 |
+| E | peringkat 1 + TTA flip horizontal | resize 236, crop 224 | 0,9701 | 0,9734 | 11 |
+
+Tiga kesimpulan yang bisa dibaca dari tabel itu:
+
+1. **Transformasi pengujian saja tidak cukup untuk menjelaskan selisih.** Skenario B berbanding C
+   memakai bobot yang identik, dan selisihnya 0,0055 poin hanya karena `resize` 236 berbanding 256.
+   Namun uji lanjutan pada § 5.2 menunjukkan bahwa keuntungan itu **tidak gratis** untuk bobot yang
+   sudah ada: angka 236 adalah angka yang dipakai model peringkat 1 ketika **dilatih**, sehingga yang
+   sebenarnya muncul di sana adalah kesesuaian antara resolusi latih dan resolusi uji, bukan
+   transformasi uji yang lebih baik. Resep resmi torchvision untuk bobot ini memang
+   `crop_size=224, resize_size=236`, sehingga angka 236 tetap yang dipakai untuk pelatihan putaran
+   berikutnya.
+2. **TTA flip horizontal tidak dipakai.** Skenario D hanya menambah satu gambar benar pada model
+   kelompok sendiri (0,9658 → 0,9660), sedangkan pada model peringkat 1 justru menurunkan skor
+   (0,9754 → 0,9701). Rencana TTA pada dokumen versi sebelumnya dibatalkan.
+3. **Selisih 0,0094 yang tersisa berasal dari resep pelatihan, bukan dari arsitektur.** Kedua tim
+   memakai backbone ConvNeXt-Tiny yang sama persis, namun peringkat 1 memakai pemanasan kepala,
+   augmentasi lebih ringan (RandomResizedCrop 0,6–1,0 + flip horizontal + ColorJitter, tanpa flip
+   vertikal, RandAugment, maupun RandomErasing), weight decay 0,05, dan 13 epoch total. Karena itu
+   perbaikan diarahkan ke resep pelatihan, bukan ke penggantian backbone.
+
+### 5.2 Celah yang ditemukan pada konfigurasi sendiri
+
+Empat nilai `resize` diuji pada bobot submission yang sudah ada (crop 224, tanpa latih ulang) untuk
+memisahkan pengaruh transformasi uji dari pengaruh pelatihan:
+
+| `resize` saat uji | Macro-F1 | Akurasi | Salah | F1 `kertas_kardus` |
+|---|---:|---:|---:|---:|
+| 256 (nilai lama) | 0,9658 | 0,9685 | 13 | 0,9333 |
+| **236** (resep resmi) | 0,9660 | 0,9685 | 13 | 0,9333 |
+| 232 | 0,9638 | 0,9661 | 14 | 0,9333 |
+| 224 (tanpa resize) | 0,9612 | 0,9637 | 15 | 0,9333 |
+
+Membaca tabel ini sekaligus koreksi atas kesimpulan yang sempat tergesa: mengganti transformasi uji
+saja **tidak** menaikkan skor secara berarti (+0,0002 = satu gambar, di bawah ambang noise 0,0024).
+Angka 236 hanya berarti bila bobotnya juga **dilatih** pada 236, seperti yang dilakukan model
+peringkat 1. Aturan yang berlaku: resolusi latih dan resolusi uji harus sama, dan angka 236 adalah
+resep resmi torchvision sehingga dipakai untuk pelatihan putaran berikutnya.
+
+| Celah | Bukti | Tindakan |
+|---|---|---|
+| Resolusi latih tidak mengikuti resep resmi | bobot lama dilatih pada 256 sementara resep resmi ConvNeXt-Tiny `crop_size=224, resize_size=236`; penggantian di sisi uji saja hanya memberi +0,0002 | latih ulang pada 236 |
+| Augmentasi `strong` terlalu keras | peringkat 1 memakai augmentasi ringan tetapi menang 0,0094 pada backbone yang sama | mode `balanced` ditambahkan |
+| Tanpa pemanasan kepala | peringkat 1 melatih kepala 3 epoch lebih dulu, lalu membuka seluruh layer | resep dua tahap ditambahkan |
+| Berhenti dini memotong jadwal | percobaan 4 berhenti di epoch 9 saat lr masih 6,5e-5, sementara epoch 9 masih mencatat 0,9609 | `--patience 0` mematikan berhenti dini |
+| Kelas `kertas_kardus` tertinggal | F1 0,9333 (kelompok sendiri) berbanding 0,9434 (peringkat 1); hanya 365 gambar latih | bobot kelas `w_c = N_total / (5·N_c)` |
+
+### 5.3 Rencana putaran Preview 2
+
+Perubahan diterapkan satu variabel sekali ukur, supaya kenaikannya bisa diatribusikan:
+
+1. **crop 224, resize 236**, resep dua tahap (3 epoch kepala lr 1e-3, lalu 10 epoch lr 1e-4, wd 0,05,
+   cosine sampai habis), augmentasi `balanced`, bobot kelas penuh. Bidik melewati 0,9754.
+2. Bila langkah 1 sudah menembus catatan lama, **crop 320 (resize 448)** dengan resep yang sama.
+   93,5% gambar lokal memiliki sisi pendek >= 384 px sehingga resolusi ini masih memakai piksel asli.
+3. Yang **tidak** dilakukan pada putaran ini: berpindah ke `timm` (penamaan layer berbeda antar
+   versi berisiko menggagalkan `load_state_dict(strict=True)` di environment asisten), rata-rata
+   beberapa seed atau SWA (biaya pelatihan tidak sepadan dengan sisa waktu), dan TTA flip.
+
+Seluruh angka pada bagian ini diukur ulang di split beku yang sama dengan `evaluate.py` resmi. Skrip
+pengukuran tidak disimpan di repositori karena hanya dipakai sekali untuk audit.
