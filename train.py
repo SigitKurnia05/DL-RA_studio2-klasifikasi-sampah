@@ -474,8 +474,11 @@ def main():
 
     keluar = Path(a.out)
     keluar.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(model.state_dict(), keluar)
-    print(f"\n-> {keluar} ({keluar.stat().st_size / 2**20:.1f} MB)")
+    state = model.state_dict()
+    # Simpan dalam fp16 (~53 MB) agar selalu lolos batas 100 MB GitHub
+    state_fp16 = {k: (v.half() if v.is_floating_point() else v) for k, v in state.items()}
+    torch.save(state_fp16, keluar)
+    print(f"\n-> {keluar} ({keluar.stat().st_size / 2**20:.1f} MB fp16)")
     n = salin_val(a.data, val_names, "my_val")
     if n:
         print(f"my_val/ disalin: {n} gambar")

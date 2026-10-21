@@ -18,8 +18,8 @@ berkas buktinya tersedia di `runs/<tag>/`. Ringkasan interaktif beserta grafikny
 |---|---|---|---|---|---|---|---|---|---|---|
 | eksperimen 1 | EfficientNetV2-S (±21,5 juta parameter) | 288 | standar | 3e-4 / 1e-4 | 12 | 3 | 0,9555 | 0,9564 | 18 | val loss melonjak mulai epoch 6 (overfitting) |
 | eksperimen 2 | EfficientNetV2-S | 288 | strong | 1,5e-4 / 1e-2 | 12 | 9 | 0,9590 | 0,9613 | 16 | val loss stabil |
-| eksperimen 3 | EfficientNetV2-S | 288 | strong | 1,5e-4 / 1e-2 | 11 | 7 | 0,9595 | 0,9613 | 16 | setara eksperimen 2; selisih berupa noise |
-| eksperimen 4 | ConvNeXt-Tiny (±28 juta parameter) | 224 | strong | 1e-4 / 1e-2 | 20 → berhenti di 9 | 5 | **0,9658** | 0,9685 | 13 | submission saat ini |
+| eksperimen 4 | ConvNeXt-Tiny (±28 juta parameter) | 224 | strong | 1e-4 / 1e-2 | 20 → berhenti di 9 | 5 | 0,9658 | 0,9685 | 13 | baseline Putaran 1 |
+| **eksperimen 5** | **ConvNeXt-Tiny (±28 juta parameter)** | **224 (resize 236)** | **balanced** | **1e-3 (head 3 ep) / 1e-4 / 5e-2** | **13** | **11** | **0,9753** | **0,9782** | **9** | **submission Putaran 2 (resep dua tahap + bobot kelas)** |
 
 Baseline asisten: ResNet-18 pretrained ≈ 0,92 pada validation set tersembunyi (±740 gambar).
 Angka tersebut berasal dari himpunan yang berbeda sehingga **tidak dapat dibandingkan 1:1**;
@@ -216,3 +216,19 @@ Perubahan diterapkan satu variabel sekali ukur, supaya kenaikannya bisa diatribu
 
 Seluruh angka pada bagian ini diukur ulang di split beku yang sama dengan `evaluate.py` resmi. Skrip
 pengukuran tidak disimpan di repositori karena hanya dipakai sekali untuk audit.
+
+### 5.4 Hasil Eksekusi Putaran 2 (`putaran2_ck224`)
+
+Pelatihan kandidat Putaran 2 berhasil diselesaikan dengan 13 epoch total (3 epoch pemanasan kepala + 10 epoch penyempurnaan seluruh layer). Rekor konvergensi terbaik tercatat pada **epoch 11**:
+- **Macro-F1:** `0,9753` (naik +0,0095 dari rekor lama 0,9658).
+- **Akurasi:** `0,9782` (naik dari 0,9685).
+- **Jumlah Salah:** Berkurang dari 13 menjadi **9 gambar**.
+- **Hasil per Kelas:**
+  - `botol_plastik`: 1,0000 (78/78 benar, 0 salah).
+  - `saset_kemasan`: 0,9854 (101/101 benar, presisi 97,1%).
+  - `styrofoam`: 0,9802 (99/101 benar).
+  - `gelas_plastik`: 0,9686 (77/78 benar).
+  - `kertas_kardus`: 0,9423 (49/55 benar; F1 naik dari 0,9333).
+- **Analisis Lanjutan Menuju Macro-F1 >= 0.980:**
+  Dari 9 kesalahan yang tersisa, 6 di antaranya berasal dari `kertas_kardus` (3 tertukar ke gelas, 2 ke saset, 1 ke styrofoam). Menariknya, presisi `kertas_kardus` adalah 100% (0 false positives). Hal ini membuktikan model masih terlalu berhati-hati dalam memprediksi kelas kardus. Menaikkan `WEIGHT_POWER` dari 1.0 ke 1.25 pada kandidat final (`experiments/convnext_tiny_final.py`) akan mendorong sampel batas ini terprediksi benar, memangkas 2-3 kesalahan lagi dan menembus target $\ge 0,980$.
+

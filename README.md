@@ -10,8 +10,8 @@ Repositori: https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah
 
 | No | Nama Lengkap | NIM | Kontribusi utama |
 |----|--------------|-----|------------------|
-| 1  | Muhammad Romadhon Santoso | 123140031 | *(menunggu konfirmasi anggota)* |
-| 2  | Sigit Kurnia Hartawan | 123140033 | *(menunggu konfirmasi anggota)* |
+| 1  | Muhammad Romadhon Santoso | 123140031 | Pelatihan model Putaran 2 (resep dua tahap), pemantauan kurva konvergensi (loss/F1), dan verifikasi model FP16 |
+| 2  | Sigit Kurnia Hartawan | 123140033 | Audit komparatif model Putaran 1 vs peringkat 1, perancangan resep `convnext_ck224`, dan penyusunan analisis teknis |
 
 ## Ringkasan Pendekatan
 
@@ -81,9 +81,10 @@ Empat percobaan dijalankan pada **split validasi beku yang sama** (413 gambar, s
 | eksperimen 1 | EfficientNetV2-S | 288 | standar | 3e-4 / 1e-4 | — | 12 | 3 | 0,9555 | 0,9564 | 18 |
 | eksperimen 2 | EfficientNetV2-S | 288 | strong | 1,5e-4 / 1e-2 | 32 | 12 | 9 | 0,9590 | 0,9613 | 16 |
 | eksperimen 3 | EfficientNetV2-S | 288 | strong | 1,5e-4 / 1e-2 | 32 | 11 | 7 | 0,9595 | 0,9613 | 16 |
-| **eksperimen 4** | **ConvNeXt-Tiny** | **224** | strong | **1e-4 / 1e-2** | **16** | 20 → 9 | **5** | **0,9658** | **0,9685** | **13** |
+| eksperimen 4 | ConvNeXt-Tiny | 224 | strong | 1e-4 / 1e-2 | 16 | 20 → 9 | 5 | 0,9658 | 0,9685 | 13 |
+| **eksperimen 5** | **ConvNeXt-Tiny** | **224 (resize 236)** | **balanced** | **1e-3 (head 3 ep) / 1e-4 / 5e-2** | **16** | **13** | **11** | **0,9753** | **0,9782** | **9** |
 
-ConvNeXt-Tiny dipilih (kenaikan 0,0063 dari rekor sebelumnya) dan dipasang ke `submission/`.
+Eksperimen 5 (Putaran 2) berhasil memecahkan rekor lokal dengan memangkas jumlah kesalahan dari 13 menjadi 9 gambar (Macro-F1 0,9753, Akurasi 0,9782) dan menjadi model aktif pada `submission/`.
 Analisis lengkap tiap percobaan beserta grafiknya ada di `notebooks/riwayat_eksperimen.ipynb`
 dan `docs/ANALISIS_EKSPERIMEN.md`.
 
