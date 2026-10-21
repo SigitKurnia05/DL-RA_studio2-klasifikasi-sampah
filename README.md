@@ -37,7 +37,7 @@ dipegang tim pengajar.
 | Putaran | Commit | Backbone | Macro-F1 lokal | Akurasi lokal | Macro-F1 asisten |
 |---|---|---|---|---|---|
 | Preview 1 (14 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny | 0,9658 | 0,9685 | *(menunggu pengumuman)* |
-| Preview 2 (21 Okt) | *(belum)* | ConvNeXt-Tiny (resep dua tahap + bobot kelas) | *(belum diukur)* | *(belum diukur)* | *(belum)* |
+| Preview 2 (21 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny (resep dua tahap + bobot kelas, crop 224/resize 236) | 0,9753 | 0,9782 | *(menunggu pengumuman)* |
 | Final (25 Okt) | *(belum)* | — | — | — | — |
 
 Angka resmi putaran Preview 1 yang diumumkan asisten adalah **macro-F1 0,9501** dan akurasi 0,9514.
@@ -47,6 +47,18 @@ tersembunyi ±740 gambar yang belum pernah dilihat model. Karena itu seluruh kep
 model tetap memakai split beku lokal sebagai pembanding antar-percobaan, bukan sebagai perkiraan
 skor asisten.
 
+Pada putaran Preview 2 bobot dilatih ulang memakai resep yang lebih dekat ke resep resmi
+ConvNeXt-Tiny: `resize 236` (bukan 256), pemanasan kepala 3 epoch lalu penyempurnaan seluruh layer
+10 epoch dengan Cosine Annealing yang tidak dipotong berhenti dini, augmentasi `balanced`, dan
+pembobotan kelas dari frekuensi data latih. Hasilnya naik dari 0,9658 ke **0,9753** pada split beku
+yang sama, yaitu empat gambar lebih sedikit salah (13 menjadi 9), dan F1 `kertas_kardus` yang
+sengaja dibobot naik dari 0,9333 ke 0,9423. Uji berpasangan kedua model menunjukkan 4 prediksi
+berubah dan keempatnya membaik, tanpa satu pun memburuk; tetapi selisih itu setara 1,3 simpangan baku
+pada 413 gambar sehingga belum dapat disebut berbeda secara statistik. Angka 0,9753 juga merupakan
+epoch terbaik dari 13 epoch, sehingga nilainya optimistis karena split yang sama dipakai memilih
+epoch. Perlu dicatat bahwa percobaan naik resolusi (crop 320) sudah dijalankan dan hasilnya lebih
+rendah (0,9596), sehingga tidak dipromosikan dan berkas buktinya sengaja tidak di-commit.
+
 Hash commit yang dinilai dapat diperiksa dengan:
 
 ```bash
@@ -55,7 +67,9 @@ git log -1 --format=%H -- submission/model.pth
 
 Sumber angka: `runs/exp4_convnext/history.json` (riwayat per epoch), `runs/exp4_convnext/metrics.json`
 (ringkasan hasil), dan keluaran resmi `python evaluate.py --submission ./submission --data ./my_val`
-yang dikerjakan ulang persis seperti asisten.
+yang dikerjakan ulang persis seperti asisten. Sumber angka putaran Preview 2:
+`runs/putaran2_ck224/history.json` (riwayat per epoch), `runs/putaran2_ck224/metrics.json`
+(ringkasan hasil), dan `runs/putaran2_ck224/curves.png` (kurva).
 
 ## Perbandingan Percobaan
 
@@ -132,7 +146,7 @@ perhitungan tetap berjalan pada presisi penuh.
 | Seluruh tensor berupa float (tanpa `num_batches_tracked`) | ya; 182 tensor, 27.823.973 parameter |
 | Error relatif maksimum bobot | 4,880e-04, tepat 2^-11 (batas presisi fp16) |
 | `load_state_dict(strict=True)` melalui `evaluate.py` | lolos, tanpa kunci `missing`/`unexpected` |
-| Macro-F1 fp32 berbanding fp16 pada 413 gambar | **0,9658 berbanding 0,9658** (identik) |
+| Macro-F1 fp32 berbanding fp16 pada 413 gambar | **0,9753 berbanding 0,9753** (identik) |
 | Confusion matrix | identik sel per sel; 0 prediksi berubah |
 
 ## Cara Reproduksi
