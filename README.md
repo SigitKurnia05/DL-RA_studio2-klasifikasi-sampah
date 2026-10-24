@@ -83,8 +83,12 @@ Empat percobaan dijalankan pada **split validasi beku yang sama** (413 gambar, s
 | eksperimen 3 | EfficientNetV2-S | 288 | strong | 1,5e-4 / 1e-2 | 32 | 11 | 7 | 0,9595 | 0,9613 | 16 |
 | eksperimen 4 | ConvNeXt-Tiny | 224 | strong | 1e-4 / 1e-2 | 16 | 20 → 9 | 5 | 0,9658 | 0,9685 | 13 |
 | **eksperimen 5** | **ConvNeXt-Tiny** | **224 (resize 236)** | **balanced** | **1e-3 (head 3 ep) / 1e-4 / 5e-2** | **16** | **13** | **11** | **0,9753** | **0,9782** | **9** |
+| **model soup 02+04** | **ConvNeXt-Tiny** | **224 (resize 236)** | **balanced ⊕ strong (rata-rata bobot α=0,82)** | **1e-4 / 5e-2** | **16** | **2 × 20** | **—** | **0,9805** | **0,9831** | **7** |
 
 Eksperimen 5 (Putaran 2) berhasil memecahkan rekor lokal dengan memangkas jumlah kesalahan dari 13 menjadi 9 gambar (Macro-F1 0,9753, Akurasi 0,9782) dan menjadi model aktif pada `submission/`.
+Baris terakhir adalah **model soup** (rata-rata bobot dua model ConvNeXt-Tiny ber-augmentasi berbeda),
+yang mencatat 0,9805 — selisih satu gambar dari eksperimen 5, sehingga masih di dalam rentang derau
+dan belum dipromosikan ke `submission/`.
 Analisis lengkap tiap percobaan beserta grafiknya ada di `notebooks/riwayat_eksperimen.ipynb`
 dan `docs/ANALISIS_EKSPERIMEN.md`.
 
@@ -102,30 +106,6 @@ dan `docs/ANALISIS_EKSPERIMEN.md`.
 - **Epoch terbaik bukan epoch terakhir.** Rekor eksperimen 4 jatuh pada epoch 5 dari 9; memakai bobot
   epoch terakhir akan menurunkan skor. Karena itu `train.py` menyimpan bobot hanya pada saat
   macro-F1 membaik.
-
-## Eksperimen Lanjutan (Putaran Final)
-
-Setelah Preview 2 berhenti di 0,9753, delapan percobaan lanjutan dijalankan pada split validasi
-beku yang sama untuk menembus plafon itu. Seluruh percobaan memakai ConvNeXt-Tiny crop 224 kecuali
-disebutkan lain, dan seluruhnya diukur dengan `evaluate.py` resmi pada 413 gambar yang sama.
-
-| Percobaan | Keterangan | Macro-F1 | Akurasi | Salah | Kesimpulan |
-|---|---|---|---|---|---|
-| 01 warm restart | lanjutkan latih dari bobot 0,9753, 10 epoch, lr 3e-5 | 0,9701 | 0,9734 | 11 | gagal; model sudah konvergen |
-| 02 ep20 T_max=20 | 20 epoch dari nol, cosine T_max=20 | 0,9774 | 0,9806 | 8 | rekor sementara |
-| 03 crop 256 | crop 256/resize 288, T_max=20 | 0,9741 | 0,9782 | 9 | gagal; jadwal panjang di 256 merusak kertas |
-| 04 strong | augmentasi strong, T_max=20 | 0,9717 | 0,9734 | 11 | gagal; presisi kertas 1,0 tapi kelas lain turun |
-| 05 ConvNeXt-Small | backbone lebih besar, bs 8 | 0,9632 | 0,9661 | 14 | gagal; kapasitas lebih besar overfit |
-| **06 soup 02+04** | **model soup (rata-rata bobot) 02 dan 04, alpha 0,82** | **0,9805** | **0,9831** | **7** | **REKOR (kandidat Final, belum dipromosikan)** |
-| 07 mixup + EMA | mixup 0,2 + EMA 0,999 | 0,9709 | 0,9734 | 11 | gagal; mixup mengencerkan sinyal kelas kecil |
-| 08 label smoothing 0,0 | label smoothing dimatikan | 0,9717 | 0,9734 | 11 | gagal; tanpa smoothing model overfit |
-
-Kesimpulan: jadwal panjang (T_max=20, percobaan 02) adalah resep tunggal terbaik, dan **model soup**
-yang merata-rata bobot percobaan 02 dengan 04 (augmentasi kuat) menghasilkan kenaikan terakhir ke
-0,9805. Model soup memperbaiki satu gambar `gelas_plastik` yang tadinya salah diprediksi sebagai
-`kertas_kardus`, sehingga presisi `kertas_kardus` menjadi 1,0 tanpa merusak kelas lain. Berkas
-mentah percobaan lanjutan disimpan lokal di folder `dapur_metal/` dan sengaja tidak di-commit;
-ringkasannya didokumentasikan pada tabel di atas.
 
 ## Distribusi Dataset yang Dipakai
 
