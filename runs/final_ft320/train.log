@@ -1,0 +1,28 @@
+model file: D:\Perkuliahan duniawi\Semester 7\Pembelajaran Mendalam\Tugas studio 2\DL-RA_studio2-klasifikasi-sampah\experiments\convnext_ck320.py | crop=320
+device=cuda | train=2340 val=413 | split=splits/val.txt
+train: 292 batch/epoch | aug: balanced: RRC(320, 0.6-1.0) + hflip + ColorJitter
+optim: AdamW lr=2e-05 wd=0.05 | riwayat: runs/final_ft320/history.json
+init: runs\putaran2_ck224\model.pth | 182 tensor dimuat dengan strict=True (bobot ImageNet dilewati)
+bobot kelas (latih): botol_plastik=1.000 gelas_plastik=1.005 kertas_kardus=1.436 saset_kemasan=0.778 styrofoam=0.781
+optim: AdamW lr=2e-05 wd=0.05 | cosine T_max=4 | berhenti dini: MATI (annealing dilandai sampai habis) | riwayat: runs/final_ft320/history.json
+ep  1 | train_loss 0.4186 | val_loss 0.5067 | macro_f1 0.9593 | acc 0.9613 | lr 2.00e-05 | 179s   <-- REKOR
+ep  2 | train_loss 0.4155 | val_loss 0.5025 | macro_f1 0.9502 | acc 0.9540 | lr 1.71e-05 | 158s
+ep  3 | train_loss 0.4141 | val_loss 0.5044 | macro_f1 0.9511 | acc 0.9540 | lr 1.00e-05 | 150s
+ep  4 | train_loss 0.4124 | val_loss 0.5014 | macro_f1 0.9476 | acc 0.9516 | lr 2.93e-06 | 152s
+
+TERBAIK val_macro_f1=0.9593 acc=0.9613
+  botol_plastik    F1=0.9811
+  gelas_plastik    F1=0.9542
+  kertas_kardus    F1=0.9346
+  saset_kemasan    F1=0.9700
+  styrofoam        F1=0.9565
+confusion (baris=asli, kolom=prediksi):
+      botol_p gelas_p kertas_ saset_k styrofo
+botol_p      78       0       0       0       0
+gelas_p       2      73       1       0       2
+kertas_       0       2      50       1       2
+saset_k       0       0       1      97       3
+styrofo       1       0       0       1      99
+
+-> runs\final_ft320\model.pth (53.1 MB fp16)
+uji: python evaluate.py --submission ./submission --data ./my_val

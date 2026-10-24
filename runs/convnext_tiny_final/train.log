@@ -1,0 +1,45 @@
+model file: D:\Perkuliahan duniawi\Semester 7\Pembelajaran Mendalam\Tugas studio 2\DL-RA_studio2-klasifikasi-sampah\experiments\convnext_tiny_final.py | crop=224
+device=cuda | train=2340 val=413 | split=splits/val.txt
+train: 146 batch/epoch | aug: balanced: RRC(224, 0.6-1.0) + hflip + ColorJitter
+optim: AdamW lr=0.0001 wd=0.05 | riwayat: runs/convnext_tiny_final/history.json
+pretrained: ConvNeXt_Tiny_Weights.IMAGENET1K_V1 | 180 tensor dimuat | 2 tensor kepala dilewati
+bobot kelas (latih): botol_plastik=0.992 gelas_plastik=0.997 kertas_kardus=1.558 saset_kemasan=0.725 styrofoam=0.728
+
+-- tahap 1: kepala saja, 3 epoch, lr 0.001 --
+ep  1 | train_loss 0.7666 | val_loss 0.6366 | macro_f1 0.9165 | acc 0.9201 | lr 1.00e-03 | 76s   <-- REKOR
+ep  2 | train_loss 0.5917 | val_loss 0.6184 | macro_f1 0.9333 | acc 0.9370 | lr 1.00e-03 | 63s   <-- REKOR
+ep  3 | train_loss 0.5598 | val_loss 0.6085 | macro_f1 0.9268 | acc 0.9298 | lr 1.00e-03 | 51s
+
+-- tahap 2: seluruh layer, 14 epoch, lr 0.0001 --
+optim: AdamW lr=0.0001 wd=0.05 | cosine T_max=14 | berhenti dini: MATI (annealing dilandai sampai habis) | riwayat: runs/convnext_tiny_final/history.json
+ep  4 | train_loss 0.5330 | val_loss 0.5635 | macro_f1 0.9381 | acc 0.9419 | lr 1.00e-04 | 92s   <-- REKOR
+ep  5 | train_loss 0.4547 | val_loss 0.5329 | macro_f1 0.9530 | acc 0.9540 | lr 9.87e-05 | 89s   <-- REKOR
+ep  6 | train_loss 0.4351 | val_loss 0.5149 | macro_f1 0.9580 | acc 0.9613 | lr 9.50e-05 | 88s   <-- REKOR
+ep  7 | train_loss 0.4243 | val_loss 0.5028 | macro_f1 0.9605 | acc 0.9637 | lr 8.91e-05 | 85s   <-- REKOR
+ep  8 | train_loss 0.4233 | val_loss 0.5006 | macro_f1 0.9637 | acc 0.9685 | lr 8.12e-05 | 88s   <-- REKOR
+ep  9 | train_loss 0.4214 | val_loss 0.4932 | macro_f1 0.9703 | acc 0.9734 | lr 7.17e-05 | 86s   <-- REKOR
+ep 10 | train_loss 0.4169 | val_loss 0.4915 | macro_f1 0.9752 | acc 0.9782 | lr 6.11e-05 | 90s   <-- REKOR
+ep 11 | train_loss 0.4155 | val_loss 0.4896 | macro_f1 0.9730 | acc 0.9758 | lr 5.00e-05 | 86s
+ep 12 | train_loss 0.4158 | val_loss 0.4909 | macro_f1 0.9696 | acc 0.9734 | lr 3.89e-05 | 93s
+ep 13 | train_loss 0.4152 | val_loss 0.4873 | macro_f1 0.9685 | acc 0.9709 | lr 2.83e-05 | 88s
+ep 14 | train_loss 0.4147 | val_loss 0.4841 | macro_f1 0.9719 | acc 0.9758 | lr 1.88e-05 | 90s
+ep 15 | train_loss 0.4140 | val_loss 0.4839 | macro_f1 0.9693 | acc 0.9734 | lr 1.09e-05 | 93s
+ep 16 | train_loss 0.4136 | val_loss 0.4829 | macro_f1 0.9713 | acc 0.9758 | lr 4.95e-06 | 89s
+ep 17 | train_loss 0.4126 | val_loss 0.4831 | macro_f1 0.9713 | acc 0.9758 | lr 1.25e-06 | 87s
+
+TERBAIK val_macro_f1=0.9752 acc=0.9782
+  botol_plastik    F1=0.9936
+  gelas_plastik    F1=0.9747
+  kertas_kardus    F1=0.9423
+  saset_kemasan    F1=0.9854
+  styrofoam        F1=0.9802
+confusion (baris=asli, kolom=prediksi):
+      botol_p gelas_p kertas_ saset_k styrofo
+botol_p      78       0       0       0       0
+gelas_p       0      77       0       0       1
+kertas_       0       3      49       2       1
+saset_k       0       0       0     101       0
+styrofo       1       0       0       1      99
+
+-> runs\convnext_tiny_final\model.pth (53.1 MB fp16)
+uji: python evaluate.py --submission ./submission --data ./my_val

@@ -1,0 +1,41 @@
+model file: C:\Users\M Romadhon S\AppData\Local\hermes\cache\scratch\ck256\convnext_ck256.py | crop=256
+device=cuda | train=2340 val=413 | split=splits/val.txt
+train: 146 batch/epoch | aug: balanced: RRC(256, 0.6-1.0) + hflip + ColorJitter
+optim: AdamW lr=0.0001 wd=0.05 | riwayat: runs/ck256/history.json
+pretrained: ConvNeXt_Tiny_Weights.IMAGENET1K_V1 | 180 tensor dimuat | 2 tensor kepala dilewati
+bobot kelas (latih): botol_plastik=1.000 gelas_plastik=1.005 kertas_kardus=1.436 saset_kemasan=0.778 styrofoam=0.781
+
+-- tahap 1: kepala saja, 3 epoch, lr 0.001 --
+ep  1 | train_loss 0.7640 | val_loss 0.6239 | macro_f1 0.9153 | acc 0.9201 | lr 1.00e-03 | 49s   <-- REKOR
+ep  2 | train_loss 0.5865 | val_loss 0.6027 | macro_f1 0.9312 | acc 0.9346 | lr 1.00e-03 | 40s   <-- REKOR
+ep  3 | train_loss 0.5549 | val_loss 0.5969 | macro_f1 0.9343 | acc 0.9370 | lr 1.00e-03 | 40s   <-- REKOR
+
+-- tahap 2: seluruh layer, 10 epoch, lr 0.0001 --
+optim: AdamW lr=0.0001 wd=0.05 | cosine T_max=10 | berhenti dini: MATI (annealing dilandai sampai habis) | riwayat: runs/ck256/history.json
+ep  4 | train_loss 0.5254 | val_loss 0.5592 | macro_f1 0.9462 | acc 0.9492 | lr 1.00e-04 | 103s   <-- REKOR
+ep  5 | train_loss 0.4505 | val_loss 0.5200 | macro_f1 0.9717 | acc 0.9709 | lr 9.76e-05 | 104s   <-- REKOR
+ep  6 | train_loss 0.4319 | val_loss 0.5082 | macro_f1 0.9582 | acc 0.9613 | lr 9.05e-05 | 102s
+ep  7 | train_loss 0.4205 | val_loss 0.4979 | macro_f1 0.9635 | acc 0.9661 | lr 7.94e-05 | 103s
+ep  8 | train_loss 0.4178 | val_loss 0.4990 | macro_f1 0.9655 | acc 0.9685 | lr 6.55e-05 | 102s
+ep  9 | train_loss 0.4164 | val_loss 0.4947 | macro_f1 0.9695 | acc 0.9709 | lr 5.00e-05 | 103s
+ep 10 | train_loss 0.4138 | val_loss 0.4944 | macro_f1 0.9662 | acc 0.9685 | lr 3.45e-05 | 119s
+ep 11 | train_loss 0.4123 | val_loss 0.4911 | macro_f1 0.9663 | acc 0.9685 | lr 2.06e-05 | 103s
+ep 12 | train_loss 0.4124 | val_loss 0.4905 | macro_f1 0.9678 | acc 0.9709 | lr 9.55e-06 | 102s
+ep 13 | train_loss 0.4116 | val_loss 0.4895 | macro_f1 0.9678 | acc 0.9709 | lr 2.45e-06 | 118s
+
+TERBAIK val_macro_f1=0.9717 acc=0.9709
+  botol_plastik    F1=1.0000
+  gelas_plastik    F1=0.9737
+  kertas_kardus    F1=0.9630
+  saset_kemasan    F1=0.9706
+  styrofoam        F1=0.9515
+confusion (baris=asli, kolom=prediksi):
+      botol_p gelas_p kertas_ saset_k styrofo
+botol_p      78       0       0       0       0
+gelas_p       0      74       0       1       3
+kertas_       0       0      52       1       2
+saset_k       0       0       0      99       2
+styrofo       0       0       1       2      98
+
+-> runs\ck256\model.pth (53.1 MB fp16)
+uji: python evaluate.py --submission ./submission --data ./my_val
