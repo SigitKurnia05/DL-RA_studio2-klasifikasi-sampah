@@ -18,7 +18,7 @@ Repositori: https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah
 | Nama | Penjelasan |
 |---|---|
 | **Arsitektur / backbone** | **ConvNeXt-Tiny** pretrained ImageNet-1K (`torchvision.models.convnext_tiny`) |
-| **Strategi pelatihan** | Fine-tuning dua tahap: 3 epoch pemanasan kepala (backbone dibekukan, lr 1e-3), lalu 20 epoch seluruh layer (AdamW lr 1e-4, wd 0,05); `CosineAnnealingLR(T_max=20)` dijalankan sampai habis tanpa berhenti dini; bobot terbaik dipilih berdasarkan **macro-F1 validasi**. Submission Final berupa **model soup** (rata-rata bobot, alpha 0,82) dari dua model ConvNeXt-Tiny ber-augmentasi berbeda (`balanced` dan `strong`) |
+| **Strategi pelatihan** | Fine-tuning dua tahap: 3 epoch pemanasan kepala (backbone dibekukan, lr 1e-3), lalu 10 epoch seluruh layer (AdamW lr 1e-4, wd 0,05); `CosineAnnealingLR(T_max=10)` dijalankan sampai habis tanpa berhenti dini; bobot terbaik dipilih berdasarkan **macro-F1 validasi** |
 | **Augmentasi** | RandomResizedCrop(0,6–1,0), RandomHorizontalFlip, ColorJitter(0,2; 0,2; 0,2), normalisasi ImageNet. Flip vertikal, RandAugment, dan RandomErasing tidak dipakai |
 | **Penanganan kelas tidak seimbang** | **Diterapkan**: `CrossEntropyLoss(weight=w)` dengan `w_c = (N_total / (5 · N_c)) ** WEIGHT_POWER` dihitung dari frekuensi data latih saja, ditambah `label_smoothing=0,1` |
 | **Label noise** | `label_smoothing=0,1` |
@@ -38,7 +38,7 @@ dipegang tim pengajar.
 |---|---|---|---|---|---|
 | Preview 1 (14 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny | 0,9658 | 0,9685 | *(menunggu pengumuman)* |
 | Preview 2 (21 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny (resep dua tahap + bobot kelas, crop 224/resize 236) | 0,9753 | 0,9782 | *(menunggu pengumuman)* |
-| Final (25 Okt) | [riwayat `submission/model.pth`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.pth) | ConvNeXt-Tiny (model soup 02+04, crop 224/resize 236) | 0,9805 | 0,9831 | *(menunggu pengumuman)* |
+| Final (25 Okt) | *(belum)* | — | — | — | — |
 
 Angka resmi putaran Preview 1 yang diumumkan asisten adalah **macro-F1 0,9501** dan akurasi 0,9514.
 Angka itu lebih rendah 0,0157 daripada angka lokal 0,9658 pada split beku sendiri, dan selisih itu
@@ -116,7 +116,7 @@ disebutkan lain, dan seluruhnya diukur dengan `evaluate.py` resmi pada 413 gamba
 | 03 crop 256 | crop 256/resize 288, T_max=20 | 0,9741 | 0,9782 | 9 | gagal; jadwal panjang di 256 merusak kertas |
 | 04 strong | augmentasi strong, T_max=20 | 0,9717 | 0,9734 | 11 | gagal; presisi kertas 1,0 tapi kelas lain turun |
 | 05 ConvNeXt-Small | backbone lebih besar, bs 8 | 0,9632 | 0,9661 | 14 | gagal; kapasitas lebih besar overfit |
-| **06 soup 02+04** | **model soup (rata-rata bobot) 02 dan 04, alpha 0,82** | **0,9805** | **0,9831** | **7** | **REKOR, dipromosikan ke `submission/`** |
+| **06 soup 02+04** | **model soup (rata-rata bobot) 02 dan 04, alpha 0,82** | **0,9805** | **0,9831** | **7** | **REKOR (kandidat Final, belum dipromosikan)** |
 | 07 mixup + EMA | mixup 0,2 + EMA 0,999 | 0,9709 | 0,9734 | 11 | gagal; mixup mengencerkan sinyal kelas kecil |
 | 08 label smoothing 0,0 | label smoothing dimatikan | 0,9717 | 0,9734 | 11 | gagal; tanpa smoothing model overfit |
 
