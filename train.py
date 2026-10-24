@@ -40,6 +40,8 @@ Argumen penting:
     --history-out: tujuan berkas riwayat JSON (default runs/history.json).
     --limit: batasi jumlah gambar latih untuk uji cepat; 0 = semua (default 0).
     --scratch: latih tanpa bobot ImageNet.
+    --init: berkas .pth awal untuk fine-tuning; bila diisi, bobot ImageNet dilewati.
+    --label-smoothing: label smoothing CrossEntropyLoss (bawaan 0.1).
 
 Returns:
     None; menulis bobot terbaik dan runs/last.json berisi riwayat tiap epoch.
@@ -212,8 +214,13 @@ def bobot_kelas(names, power):
     return w / w.mean()
 
 
-def train_epoch(model, dl, opt, lossf, device):
+def train_epoch(model, dl, opt, lossf, device, mixup_alpha=0.0, ema_state=None, ema_decay=0.0):
     """Satu putaran pelatihan.
+
+    Bila mixup_alpha > 0, tiap batch dicampur dengan permutasinya memakai
+    koefisien dari distribusi Beta(alpha, alpha), dan kerugiannya adalah
+    rata-rata berbobot dari kedua pasangan. Bila ema_state diberikan,
+    rata-rata bergerak bobot (EMA) diperbarui setelah tiap langkah optimizer.
 
     Args:
         model: model yang dilatih.
@@ -221,6 +228,9 @@ def train_epoch(model, dl, opt, lossf, device):
         opt: optimizer.
         lossf: fungsi kerugian.
         device: 'cuda' atau 'cpu'.
+        mixup_alpha: alpha Beta untuk mixup; 0 = mati.
+        ema_state: dict bayangan EMA (dibuat di main()); None = mati.
+        ema_decay: faktor peluruhan EMA.
 
     Returns:
         float: rata-rata kerugian sepanjang epoch.
@@ -230,9 +240,20 @@ def train_epoch(model, dl, opt, lossf, device):
     for x, y in dl:
         x, y = x.to(device), y.to(device)
         opt.zero_grad(set_to_none=True)
-        loss = lossf(model(x), y)
+        if mixup_alpha > 0:
+            lam = float(torch.distributions.Beta(mixup_alpha, mixup_alpha).sample())
+            idx = torch.randperm(x.size(0), device=device)
+            out = model(lam * x + (1 - lam) * x[idx])
+            loss = lam * lossf(out, y) + (1 - lam) * lossf(out, y[idx])
+        else:
+            loss = lossf(model(x), y)
         loss.backward()
         opt.step()
+        if ema_state is not None:
+            with torch.no_grad():
+                for k, v in model.state_dict().items():
+                    if v.dtype.is_floating_point:
+                        ema_state[k].mul_(ema_decay).add_(v, alpha=1 - ema_decay)
         total += loss.item()
     return total / max(1, len(dl))
 
@@ -326,6 +347,15 @@ def main():
                          "0 = pemanasan dimatikan")
     ap.add_argument("--limit", type=int, default=0, help="batasi gambar latih (uji cepat); 0 = semua")
     ap.add_argument("--scratch", action="store_true", help="latih tanpa bobot ImageNet")
+    ap.add_argument("--init", default=None,
+                    help="berkas .pth awal (mis. bobot terbaik sebelumnya) untuk fine-tuning; "
+                         "bila diisi, bobot ImageNet tidak dipakai")
+    ap.add_argument("--label-smoothing", type=float, default=0.1, dest="label_smoothing",
+                    help="label smoothing CrossEntropyLoss; bawaan 0.1 = perilaku lama")
+    ap.add_argument("--mixup", type=float, default=0.0,
+                    help="alpha mixup (distribusi Beta); 0 = mati, lazim 0.2")
+    ap.add_argument("--ema", type=float, default=0.0,
+                    help="decay rata-rata bergerak bobot (EMA); 0 = mati, lazim 0.999")
     a = ap.parse_args()
     # Nilai diterima sebagai string supaya 'None' (yang dikirim notebook secara apa adanya)
     # berarti "ikuti berkas model", bukan langsung gagal diparse sebagai angka.
@@ -381,7 +411,15 @@ def main():
     print(f"optim: AdamW lr={a.lr} wd={a.wd} | riwayat: {a.history_out}")
 
     model = get_model().to(device)
-    if not a.scratch:
+    if a.init:
+        berkas_awal = Path(a.init)
+        if not berkas_awal.is_file():
+            raise SystemExit(f"[GAGAL] berkas --init tidak ditemukan: {berkas_awal}")
+        awal = torch.load(berkas_awal, map_location="cpu", weights_only=True)
+        model.load_state_dict(awal, strict=True)
+        print(f"init: {berkas_awal} | {len(awal)} tensor dimuat dengan strict=True "
+              f"(bobot ImageNet dilewati)")
+    elif not a.scratch:
         load_pretrained(model, mod)
 
     # Bobot kelas dihitung dari frekuensi data LATIH saja (bukan validasi), dengan
@@ -390,9 +428,10 @@ def main():
         bobot = bobot_kelas(tr_names, power_bobot)
         print("bobot kelas (latih): " + " ".join(
             f"{c}={w:.3f}" for c, w in zip(CLASSES, bobot.tolist())))
-        lossf = nn.CrossEntropyLoss(weight=bobot.to(device), label_smoothing=0.1)
+        lossf = nn.CrossEntropyLoss(weight=bobot.to(device),
+                                   label_smoothing=a.label_smoothing)
     else:
-        lossf = nn.CrossEntropyLoss(label_smoothing=0.1)
+        lossf = nn.CrossEntropyLoss(label_smoothing=a.label_smoothing)
 
     Path("runs").mkdir(exist_ok=True)
     best_f1, best_state, bad, riwayat = -1.0, None, 0, []
@@ -445,6 +484,12 @@ def main():
         p.requires_grad = True
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=a.wd)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, a.epochs)
+    ema_state = None
+    if a.ema > 0:
+        ema_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+        print(f"EMA aktif: decay {a.ema}")
+    if a.mixup > 0:
+        print(f"mixup aktif: alpha {a.mixup}")
     print(f"optim: AdamW lr={a.lr} wd={a.wd} | cosine T_max={a.epochs} | "
           f"{'berhenti dini: MATI (annealing dilandai sampai habis)' if a.patience >= a.epochs else f'berhenti dini: {a.patience} epoch'}"
           f" | riwayat: {a.history_out}")
@@ -452,7 +497,7 @@ def main():
     for _ in range(a.epochs):
         ep_global += 1
         t0 = time.time()
-        train_loss = train_epoch(model, tr_dl, opt, lossf, device)
+        train_loss = train_epoch(model, tr_dl, opt, lossf, device, a.mixup, ema_state, a.ema)
         lr_kini = opt.param_groups[0]["lr"]
         sched.step()  # jadwal melangkah setelah epoch selesai
         val_loss = hitung_loss(model, va_dl, lossf, device)
@@ -462,6 +507,13 @@ def main():
             print(f"early stop: macro-F1 val tidak naik {a.patience} epoch")
             break
 
+    if ema_state is not None:
+        model.load_state_dict(ema_state)
+        m_ema, _, _ = evaluate_on(model, va_dl, device)
+        if m_ema["macro_f1"] >= best_f1:
+            best_f1 = m_ema["macro_f1"]
+            best_state = {k: v.detach().clone() for k, v in ema_state.items()}
+            print(f"EMA dipilih: macro-F1 {best_f1:.4f}")
     model.load_state_dict(best_state)
     m, _, _ = evaluate_on(model, va_dl, device)
     print(f"\nTERBAIK val_macro_f1={m['macro_f1']:.4f} acc={m['accuracy']:.4f}")
