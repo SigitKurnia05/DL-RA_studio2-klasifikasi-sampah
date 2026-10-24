@@ -18,7 +18,7 @@ Repositori: https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah
 | Nama | Penjelasan |
 |---|---|
 | **Arsitektur / backbone** | **ConvNeXt-Tiny** pretrained ImageNet-1K (`torchvision.models.convnext_tiny`) |
-| **Strategi pelatihan** | Fine-tuning dua tahap: 3 epoch pemanasan kepala (backbone dibekukan, lr 1e-3), lalu 10 epoch seluruh layer (AdamW lr 1e-4, wd 0,05); `CosineAnnealingLR(T_max=10)` dijalankan sampai habis tanpa berhenti dini; bobot terbaik dipilih berdasarkan **macro-F1 validasi** |
+| **Strategi pelatihan** | Fine-tuning dua tahap: 3 epoch pemanasan kepala (backbone dibekukan, lr 1e-3), lalu 20 epoch seluruh layer (AdamW lr 1e-4, wd 0,05); `CosineAnnealingLR(T_max=20)` dijalankan sampai habis tanpa berhenti dini; bobot terbaik dipilih berdasarkan **macro-F1 validasi**. Submission Final berupa **model soup** (rata-rata bobot, alpha 0,82) dari dua model ConvNeXt-Tiny ber-augmentasi berbeda (`balanced` dan `strong`) |
 | **Augmentasi** | RandomResizedCrop(0,6–1,0), RandomHorizontalFlip, ColorJitter(0,2; 0,2; 0,2), normalisasi ImageNet. Flip vertikal, RandAugment, dan RandomErasing tidak dipakai |
 | **Penanganan kelas tidak seimbang** | **Diterapkan**: `CrossEntropyLoss(weight=w)` dengan `w_c = (N_total / (5 · N_c)) ** WEIGHT_POWER` dihitung dari frekuensi data latih saja, ditambah `label_smoothing=0,1` |
 | **Label noise** | `label_smoothing=0,1` |
@@ -38,7 +38,7 @@ dipegang tim pengajar.
 |---|---|---|---|---|---|
 | Preview 1 (14 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny | 0,9658 | 0,9685 | *(menunggu pengumuman)* |
 | Preview 2 (21 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny (resep dua tahap + bobot kelas, crop 224/resize 236) | 0,9753 | 0,9782 | *(menunggu pengumuman)* |
-| Final (25 Okt) | *(belum)* | — | — | — | — |
+| Final (25 Okt) | [riwayat `submission/model.pth`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.pth) | ConvNeXt-Tiny (model soup 02+04, crop 224/resize 236) | 0,9805 | 0,9831 | *(menunggu pengumuman)* |
 
 Angka resmi putaran Preview 1 yang diumumkan asisten adalah **macro-F1 0,9501** dan akurasi 0,9514.
 Angka itu lebih rendah 0,0157 daripada angka lokal 0,9658 pada split beku sendiri, dan selisih itu
@@ -102,6 +102,30 @@ dan `docs/ANALISIS_EKSPERIMEN.md`.
 - **Epoch terbaik bukan epoch terakhir.** Rekor eksperimen 4 jatuh pada epoch 5 dari 9; memakai bobot
   epoch terakhir akan menurunkan skor. Karena itu `train.py` menyimpan bobot hanya pada saat
   macro-F1 membaik.
+
+## Eksperimen Lanjutan (Putaran Final)
+
+Setelah Preview 2 berhenti di 0,9753, delapan percobaan lanjutan dijalankan pada split validasi
+beku yang sama untuk menembus plafon itu. Seluruh percobaan memakai ConvNeXt-Tiny crop 224 kecuali
+disebutkan lain, dan seluruhnya diukur dengan `evaluate.py` resmi pada 413 gambar yang sama.
+
+| Percobaan | Keterangan | Macro-F1 | Akurasi | Salah | Kesimpulan |
+|---|---|---|---|---|---|
+| 01 warm restart | lanjutkan latih dari bobot 0,9753, 10 epoch, lr 3e-5 | 0,9701 | 0,9734 | 11 | gagal; model sudah konvergen |
+| 02 ep20 T_max=20 | 20 epoch dari nol, cosine T_max=20 | 0,9774 | 0,9806 | 8 | rekor sementara |
+| 03 crop 256 | crop 256/resize 288, T_max=20 | 0,9741 | 0,9782 | 9 | gagal; jadwal panjang di 256 merusak kertas |
+| 04 strong | augmentasi strong, T_max=20 | 0,9717 | 0,9734 | 11 | gagal; presisi kertas 1,0 tapi kelas lain turun |
+| 05 ConvNeXt-Small | backbone lebih besar, bs 8 | 0,9632 | 0,9661 | 14 | gagal; kapasitas lebih besar overfit |
+| **06 soup 02+04** | **model soup (rata-rata bobot) 02 dan 04, alpha 0,82** | **0,9805** | **0,9831** | **7** | **REKOR, dipromosikan ke `submission/`** |
+| 07 mixup + EMA | mixup 0,2 + EMA 0,999 | 0,9709 | 0,9734 | 11 | gagal; mixup mengencerkan sinyal kelas kecil |
+| 08 label smoothing 0,0 | label smoothing dimatikan | 0,9717 | 0,9734 | 11 | gagal; tanpa smoothing model overfit |
+
+Kesimpulan: jadwal panjang (T_max=20, percobaan 02) adalah resep tunggal terbaik, dan **model soup**
+yang merata-rata bobot percobaan 02 dengan 04 (augmentasi kuat) menghasilkan kenaikan terakhir ke
+0,9805. Model soup memperbaiki satu gambar `gelas_plastik` yang tadinya salah diprediksi sebagai
+`kertas_kardus`, sehingga presisi `kertas_kardus` menjadi 1,0 tanpa merusak kelas lain. Berkas
+mentah percobaan lanjutan disimpan lokal di folder `dapur_metal/` dan sengaja tidak di-commit;
+ringkasannya didokumentasikan pada tabel di atas.
 
 ## Distribusi Dataset yang Dipakai
 
