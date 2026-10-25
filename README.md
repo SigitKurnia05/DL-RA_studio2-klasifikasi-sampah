@@ -38,7 +38,7 @@ dipegang tim pengajar.
 |---|---|---|---|---|---|
 | Preview 1 (14 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny | 0,9658 | 0,9685 | *(menunggu pengumuman)* |
 | Preview 2 (21 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny (resep dua tahap + bobot kelas, crop 224/resize 236) | 0,9753 | 0,9782 | *(menunggu pengumuman)* |
-| Final (25 Okt) | *(belum)* | — | — | — | — |
+| Final (25 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny (Model Soup 02+04, α=0,82, crop 224/resize 236) | **0,9805** | **0,9831** | *(menunggu pengumuman)* |
 
 Angka resmi putaran Preview 1 yang diumumkan asisten adalah **macro-F1 0,9501** dan akurasi 0,9514.
 Angka itu lebih rendah 0,0157 daripada angka lokal 0,9658 pada split beku sendiri, dan selisih itu

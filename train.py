@@ -171,16 +171,24 @@ def load_pretrained(model, mod):
     Raises:
         SystemExit: bila bobot ImageNet tidak dapat ditemukan / tidak cocok.
     """
-    weights = getattr(mod, "IMAGENET_WEIGHTS", None)
-    if weights is None:
-        try:
-            enum = models.get_model_weights(model)
-            weights = getattr(enum, "IMAGENET1K_V1", None) or enum.DEFAULT
-        except Exception as exc:  # noqa: BLE001
-            raise SystemExit(
-                f"[GAGAL] tidak tahu sumber bobot ImageNet untuk {type(model).__name__}: {exc}\n"
-                f"        tambahkan IMAGENET_WEIGHTS di berkas model.")
-    sumber = weights.get_state_dict(progress=True)
+    nama = None
+    if getattr(mod, "TIMM_MODEL", None):
+        import timm
+        pretrained = timm.create_model(mod.TIMM_MODEL, pretrained=True)
+        sumber = pretrained.state_dict()
+        nama = f"timm {mod.TIMM_MODEL}"
+    else:
+        weights = getattr(mod, "IMAGENET_WEIGHTS", None)
+        if weights is None:
+            try:
+                enum = models.get_model_weights(model)
+                weights = getattr(enum, "IMAGENET1K_V1", None) or enum.DEFAULT
+            except Exception as exc:  # noqa: BLE001
+                raise SystemExit(
+                    f"[GAGAL] tidak tahu sumber bobot ImageNet untuk {type(model).__name__}: {exc}\n"
+                    f"        tambahkan IMAGENET_WEIGHTS di berkas model.")
+        sumber = weights.get_state_dict(progress=True)
+        nama = str(weights)
     sendiri = model.state_dict()
     cocok = {k: v for k, v in sumber.items() if k in sendiri and sendiri[k].shape == v.shape}
     dilewati = [k for k in sumber if k not in cocok]
@@ -190,7 +198,7 @@ def load_pretrained(model, mod):
     sisa = [k for k in missing if k not in dilewati]
     if sisa:
         raise SystemExit(f"[GAGAL] layer tidak terisi bobot: {sisa[:3]}")
-    print(f"pretrained: {weights} | {len(cocok)} tensor dimuat | {len(dilewati)} tensor kepala dilewati")
+    print(f"pretrained: {nama} | {len(cocok)} tensor dimuat | {len(dilewati)} tensor kepala dilewati")
 
 
 def bobot_kelas(names, power):
@@ -212,6 +220,62 @@ def bobot_kelas(names, power):
         jumlah[CLASSES.index(rel.split("/")[0])] += 1
     w = (jumlah.sum() / (len(CLASSES) * jumlah.clamp(min=1))) ** power
     return w / w.mean()
+
+
+def pisah_kepala(model):
+    """Pisahkan parameter kepala dan backbone untuk pemanasan kepala (tahap 1).
+
+    Mendukung dua penamaan arsitektur:
+      - torchvision ConvNeXt: backbone = `features`, kepala = `classifier`.
+      - timm ConvNeXt: backbone = `stem` + `stages`, kepala = `head` (norm + fc).
+
+    Args:
+        model: model yang sudah dibangun.
+
+    Returns:
+        tuple: (daftar param kepala, daftar param backbone).
+    """
+    if hasattr(model, "head") and hasattr(model, "stages"):
+        kepala = list(model.head.parameters())
+        backbone = [p for n, p in model.named_parameters() if not n.startswith("head.")]
+        return kepala, backbone
+    return list(model.classifier.parameters()), list(model.features.parameters())
+
+
+def llrd_param_groups(model, lr, layer_decay, weight_decay, depth_fn=None):
+    """Bentuk grup parameter per kedalaman untuk layer-wise LR decay.
+
+    Kepala mendapat LR penuh; lapisan backbone mendapat LR yang mengecil seiring
+    kedekatannya ke input. Bila `depth_fn` diberikan (fungsi `layer_depth(name)` dari
+    berkas model, dipakai arsitektur timm), kedalaman diambil dari situ; tanpa fungsi itu
+    dipakai pemetaan torchvision ConvNeXt (`classifier` -> 0, `features.N` -> 8 - N).
+
+    Args:
+        model: model yang akan dilatih.
+        lr: learning rate puncak (untuk kepala).
+        layer_decay: faktor peluruhan per tingkat kedalaman.
+        weight_decay: weight decay tiap grup.
+        depth_fn: callable opsional name -> int.
+
+    Returns:
+        list: daftar grup parameter siap pakai untuk AdamW.
+    """
+    kedalaman = {}
+    for name, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+        if depth_fn is not None:
+            d = depth_fn(name)
+        elif name.startswith("classifier"):
+            d = 0
+        elif name.startswith("features."):
+            idx = int(name.split(".")[1])
+            d = 8 - idx  # features[7] -> 1, features[0] (stem) -> 8
+        else:
+            d = 0
+        kedalaman.setdefault(d, []).append(p)
+    return [{"params": kedalaman[d], "lr": lr * (layer_decay ** d),
+             "weight_decay": weight_decay} for d in sorted(kedalaman)]
 
 
 def train_epoch(model, dl, opt, lossf, device, mixup_alpha=0.0, ema_state=None, ema_decay=0.0):
@@ -381,6 +445,7 @@ def main():
     head_lr = getattr(mod, "HEAD_LR", 1e-3)
     pakai_bobot_kelas = getattr(mod, "CLASS_WEIGHTED", False)
     power_bobot = getattr(mod, "WEIGHT_POWER", 1.0)
+    layer_decay = getattr(mod, "LAYER_DECAY", 0.0)
     if a.patience <= 0 or a.patience >= a.epochs:
         # Tidak akan pernah tercapai: cosine annealing dibiarkan melandai sampai habis.
         a.patience = a.epochs + 1
@@ -464,9 +529,10 @@ def main():
     # ── Tahap 1: pemanasan kepala, backbone dibekukan ─────────────────────────
     if head_epochs > 0:
         print(f"\n-- tahap 1: kepala saja, {head_epochs} epoch, lr {head_lr:g} --")
-        for p in model.features.parameters():
+        kepala, backbone = pisah_kepala(model)
+        for p in backbone:
             p.requires_grad = False
-        kepala = [p for p in model.classifier.parameters() if p.requires_grad]
+        kepala = [p for p in kepala if p.requires_grad]
         opt_head = torch.optim.AdamW(kepala, lr=head_lr, weight_decay=a.wd)
         for _ in range(head_epochs):
             ep_global += 1
@@ -482,7 +548,13 @@ def main():
         print(f"\n-- tahap 2: seluruh layer, {a.epochs} epoch, lr {a.lr:g} --")
     for p in model.parameters():
         p.requires_grad = True
-    opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=a.wd)
+    if layer_decay > 0:
+        depth_fn = getattr(mod, "layer_depth", None)
+        opt = torch.optim.AdamW(llrd_param_groups(model, a.lr, layer_decay, a.wd, depth_fn),
+                                lr=a.lr, weight_decay=a.wd)
+        print(f"LLRD aktif: layer_decay {layer_decay}")
+    else:
+        opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=a.wd)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, a.epochs)
     ema_state = None
     if a.ema > 0:
