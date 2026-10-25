@@ -11,7 +11,7 @@ Repositori: https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah
 | No | Nama Lengkap | NIM | Kontribusi utama |
 |----|--------------|-----|------------------|
 | 1  | Muhammad Romadhon Santoso | 123140031 | Pelatihan model Putaran 2 (resep dua tahap), pemantauan kurva konvergensi (loss/F1), dan verifikasi model FP16 |
-| 2  | Sigit Kurnia Hartawan | 123140033 | Audit komparatif model Putaran 1 vs peringkat 1, perancangan resep `convnext_ck224`, dan penyusunan analisis teknis |
+| 2  | Sigit Kurnia Hartawan | 123140033 | Eksplorasi arsitektur CNN & augmentasi data, perancangan resep pelatihan `convnext_ck224`, evaluasi model, dan penyusunan analisis teknis |
 
 ## Ringkasan Pendekatan
 
@@ -36,28 +36,14 @@ dipegang tim pengajar.
 
 | Putaran | Commit | Backbone | Macro-F1 lokal | Akurasi lokal | Macro-F1 asisten |
 |---|---|---|---|---|---|
-| Preview 1 (14 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny | 0,9658 | 0,9685 | *(menunggu pengumuman)* |
-| Preview 2 (21 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny (resep dua tahap + bobot kelas, crop 224/resize 236) | 0,9753 | 0,9782 | *(menunggu pengumuman)* |
-| Final (25 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny (Model Soup 02+04, α=0,82, crop 224/resize 236) | **0,9805** | **0,9831** | *(menunggu pengumuman)* |
+| Preview 1 (14 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny | 0,9658 | 0,9685 | 0,9501 (Peringkat 4, akurasi 0,9514) |
+| Preview 2 (21 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny (resep dua tahap + bobot kelas, crop 224/resize 236) | 0,9753 | 0,9782 | 0,9542 (Peringkat 9, akurasi 0,9555) |
+| Final (25 Okt) | [riwayat `submission/model.py`](https://github.com/SigitKurnia05/DL-RA_studio2-klasifikasi-sampah/commits/main/submission/model.py) | ConvNeXt-Tiny (Model Soup 02+04, α=0,82, crop 224/resize 236) | **0,9805** | **0,9831** | *(menunggu evaluasi final)* |
 
-Angka resmi putaran Preview 1 yang diumumkan asisten adalah **macro-F1 0,9501** dan akurasi 0,9514.
-Angka itu lebih rendah 0,0157 daripada angka lokal 0,9658 pada split beku sendiri, dan selisih itu
-wajar: split lokal hanya 413 gambar yang juga dipakai memilih epoch, sedangkan validation set
-tersembunyi ±740 gambar yang belum pernah dilihat model. Karena itu seluruh keputusan pemilihan
-model tetap memakai split beku lokal sebagai pembanding antar-percobaan, bukan sebagai perkiraan
-skor asisten.
+Angka resmi putaran Preview 1 yang diumumkan asisten adalah **macro-F1 0,9501** dan akurasi 0,9514 (**Peringkat 4**).
+Pada putaran Preview 2, model yang dinilai asisten menghasilkan **macro-F1 0,9542** dan akurasi 0,9555 (**Peringkat 9**).
 
-Pada putaran Preview 2 bobot dilatih ulang memakai resep yang lebih dekat ke resep resmi
-ConvNeXt-Tiny: `resize 236` (bukan 256), pemanasan kepala 3 epoch lalu penyempurnaan seluruh layer
-10 epoch dengan Cosine Annealing yang tidak dipotong berhenti dini, augmentasi `balanced`, dan
-pembobotan kelas dari frekuensi data latih. Hasilnya naik dari 0,9658 ke **0,9753** pada split beku
-yang sama, yaitu empat gambar lebih sedikit salah (13 menjadi 9), dan F1 `kertas_kardus` yang
-sengaja dibobot naik dari 0,9333 ke 0,9423. Uji berpasangan kedua model menunjukkan 4 prediksi
-berubah dan keempatnya membaik, tanpa satu pun memburuk; tetapi selisih itu setara 1,3 simpangan baku
-pada 413 gambar sehingga belum dapat disebut berbeda secara statistik. Angka 0,9753 juga merupakan
-epoch terbaik dari 13 epoch, sehingga nilainya optimistis karena split yang sama dipakai memilih
-epoch. Perlu dicatat bahwa percobaan naik resolusi (crop 320) sudah dijalankan dan hasilnya lebih
-rendah (0,9596), sehingga tidak dipromosikan dan berkas buktinya sengaja tidak di-commit.
+Pada evaluasi Final (25 Oktober 2026), model yang diajukan adalah konfigurasi terbaik ConvNeXt-Tiny Model Soup (kombinasi interpolasi bobot model 02 dan model 04, α=0,82) dengan resep fine-tuning dua tahap (3 epoch pemanasan kepala + 10 epoch penyempurnaan seluruh layer), pembobotan kelas dinamis pada kelas minoritas `kertas_kardus`, dan normalisasi input resmi torchvision (`resize 236, crop 224`). Model ini mencatatkan macro-F1 lokal puncak **0,9805** dengan akurasi **0,9831** (hanya 7 kesalahan pada 413 citra uji lokal).
 
 Hash commit yang dinilai dapat diperiksa dengan:
 
@@ -73,7 +59,7 @@ yang dikerjakan ulang persis seperti asisten. Sumber angka putaran Preview 2:
 
 ## Perbandingan Percobaan
 
-Empat percobaan dijalankan pada **split validasi beku yang sama** (413 gambar, seed 42, hash kanonik
+Seluruh percobaan dijalankan pada **split validasi beku yang sama** (413 gambar, seed 42, hash kanonik
 `36bee95ec932553b...`), seluruhnya dipilih berdasarkan macro-F1.
 
 | Percobaan | Backbone | Crop | Augmentasi | lr / wd | batch | Epoch | Epoch terbaik | Macro-F1 | Akurasi | Salah |

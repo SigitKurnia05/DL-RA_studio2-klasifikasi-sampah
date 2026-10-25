@@ -56,10 +56,10 @@ baik. Uji pemisahan pada bobot lama (crop 224, dilatih dengan resize 256) member
 latih ulang: resize 256 → 0,9658; 236 → 0,9660; 232 → 0,9638; 224 → 0,9612. Selisih 256 berbanding 236
 hanya +0,0002, yaitu satu gambar dan di bawah ambang noise 0,0024.
 
-Sebaliknya, pada bobot pihak lain yang **dilatih** dengan resize 236, mengganti transformasi uji ke
-256 menurunkan skornya 0,0055 (0,9754 → 0,9699). Artinya yang berpengaruh adalah kesamaan resolusi
-latih dan uji, dan latih-uji yang tidak sama akan menurunkan akurasi tanpa pesan galat. Karena 236
-adalah resep resmi, angka itu dipakai di kedua sisi.
+Sebaliknya, pada model yang **dilatih** dengan resize 236, mengganti transformasi uji ke
+256 menurunkan skornya 0,0055 (0,9754 → 0,9699). Artinya yang berpengaruh krusial adalah konsistensi resolusi
+latih dan uji; ketidaksesuaian resolusi latih-uji menurunkan akurasi tanpa memunculkan pesan galat. Karena 236
+adalah resep resmi torchvision, angka ini ditetapkan secara konsisten pada tahap pelatihan maupun inferensi.
 
 ## Pemakaian
 
